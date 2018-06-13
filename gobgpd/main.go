@@ -73,6 +73,9 @@ func main() {
 		}()
 	}
 
+
+        log.Info("Policy config is updated")
+
 	switch opts.LogLevel {
 	case "debug":
 		log.SetLevel(log.DebugLevel)
