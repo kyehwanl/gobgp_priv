@@ -590,6 +590,15 @@ func (s *Server) AddPath(ctx context.Context, arg *AddPathRequest) (*AddPathResp
 	return &AddPathResponse{Uuid: uuid}, err
 }
 
+func (s *Server) AddPathBgpsec(ctx context.Context, arg *AddPathBgpsecRequest) (*AddPathBgpsecResponse, error) {
+	pathList, err := s.api2PathList(arg.Resource, []*Path{arg.Path})
+	var uuid []byte
+	if err == nil {
+		uuid, err = s.bgpServer.AddPath(arg.VrfId, pathList)
+	}
+	return &AddPathBgpsecResponse{Uuid: uuid}, err
+}
+
 func (s *Server) DeletePath(ctx context.Context, arg *DeletePathRequest) (*DeletePathResponse, error) {
 	pathList, err := func() ([]*table.Path, error) {
 		if arg.Path != nil {
@@ -1934,7 +1943,7 @@ func (s *Server) GetPolicyAssignment(ctx context.Context, arg *GetPolicyAssignme
 		Default:  def,
 		Policies: policies,
 	}
-	return &GetPolicyAssignmentResponse{NewAPIPolicyAssignmentFromTableStruct(t)}, err
+	return &GetPolicyAssignmentResponse{Assignment: NewAPIPolicyAssignmentFromTableStruct(t)}, err
 }
 
 func defaultRouteType(d RouteAction) table.RouteType {

@@ -34,7 +34,6 @@ service GobgpApi {
   rpc GetRib(GetRibRequest) returns (GetRibResponse) {}
   rpc ValidateRib(ValidateRibRequest) returns (ValidateRibResponse) {}
   rpc AddPath(AddPathRequest) returns (AddPathResponse) {}
-  rpc AddPathBgpsec(AddPathBgpsecRequest) returns (AddPathBgpsecResponse) {}
   rpc DeletePath(DeletePathRequest) returns (DeletePathResponse) {}
   rpc MonitorRib(MonitorRibRequest) returns (stream Destination) {}
   rpc MonitorPeerState(Arguments) returns (stream Peer) {}
@@ -94,17 +93,7 @@ message AddPathRequest {
   Path path = 3;
 }
 
-message AddPathBgpsecRequest {
-  Resource resource = 1;
-  string vrf_id = 2;
-  Path path = 3;
-}
-
 message AddPathResponse {
-  bytes uuid = 1;
-}
-
-message AddPathBgpsecResponse {
   bytes uuid = 1;
 }
 

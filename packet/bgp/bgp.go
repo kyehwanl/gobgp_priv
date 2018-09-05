@@ -208,6 +208,7 @@ const (
 	BGP_CAP_MULTIPROTOCOL               BGPCapabilityCode = 1
 	BGP_CAP_ROUTE_REFRESH               BGPCapabilityCode = 2
 	BGP_CAP_CARRYING_LABEL_INFO         BGPCapabilityCode = 4
+	BGP_CAP_BGPSEC_OPEN                 BGPCapabilityCode = 7
 	BGP_CAP_GRACEFUL_RESTART            BGPCapabilityCode = 64
 	BGP_CAP_FOUR_OCTET_AS_NUMBER        BGPCapabilityCode = 65
 	BGP_CAP_ADD_PATH                    BGPCapabilityCode = 69
@@ -220,6 +221,7 @@ var CapNameMap = map[BGPCapabilityCode]string{
 	BGP_CAP_MULTIPROTOCOL:               "multiprotocol",
 	BGP_CAP_ROUTE_REFRESH:               "route-refresh",
 	BGP_CAP_CARRYING_LABEL_INFO:         "carrying-label-info",
+	BGP_CAP_BGPSEC_OPEN:                 "bgpsec-info",
 	BGP_CAP_GRACEFUL_RESTART:            "graceful-restart",
 	BGP_CAP_FOUR_OCTET_AS_NUMBER:        "4-octet-as",
 	BGP_CAP_ADD_PATH:                    "add-path",
@@ -577,6 +579,50 @@ func NewCapRouteRefreshCisco() *CapRouteRefreshCisco {
 			CapCode: BGP_CAP_ROUTE_REFRESH_CISCO,
 		},
 	}
+}
+
+/* BGPSec Open Capability */
+type CapBGPSecCapability struct {
+	DefaultParameterCapability
+}
+
+func NewBGPSecCapabilitySend() *CapBGPSecCapability {
+	buf := make([]byte, 3)
+	buf[0] = byte(0x08)
+	buf[1] = byte(0x00)
+	buf[2] = byte(0x01)
+
+	return &CapBGPSecCapability{
+		DefaultParameterCapability{
+			CapCode:  BGP_CAP_BGPSEC_OPEN,
+			CapValue: buf,
+		},
+	}
+}
+
+func NewBGPSecCapabilityRecv() *CapBGPSecCapability {
+	buf := make([]byte, 3)
+	buf[0] = byte(0x00)
+	buf[1] = byte(0x00)
+	buf[2] = byte(0x01)
+
+	return &CapBGPSecCapability{
+		DefaultParameterCapability{
+			CapCode:  BGP_CAP_BGPSEC_OPEN,
+			CapValue: buf,
+		},
+	}
+}
+
+func (c *CapBGPSecCapability) Serialize() ([]byte, error) {
+	/*
+		buf := make([]byte, 3)
+		buf[0] = byte(0x08)
+		buf[1] = byte(0x00)
+		buf[2] = byte(0x01)
+		c.DefaultParameterCapability.CapValue = buf
+	*/
+	return c.DefaultParameterCapability.Serialize()
 }
 
 type CapLongLivedGracefulRestartTuple struct {

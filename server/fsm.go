@@ -561,6 +561,11 @@ func capabilitiesFromConfig(pConf *config.Neighbor) []bgp.ParameterCapabilityInt
 			caps = append(caps, bgp.NewCapLongLivedGracefulRestart(ltuples))
 		}
 	}
+
+	/* add BGPSec Open Capability */
+	caps = append(caps, bgp.NewBGPSecCapabilitySend())
+	caps = append(caps, bgp.NewBGPSecCapabilityRecv())
+
 	return caps
 }
 
