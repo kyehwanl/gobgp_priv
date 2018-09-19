@@ -4029,6 +4029,7 @@ const (
 	_
 	BGP_ATTR_TYPE_AIGP                        // = 26
 	BGP_ATTR_TYPE_LARGE_COMMUNITY BGPAttrType = 32
+	BGP_ATTR_TYPE_BGPSEC          BGPAttrType = 33
 )
 
 // NOTIFICATION Error Code  RFC 4271 4.5.
@@ -4221,6 +4222,7 @@ var PathAttrFlags map[BGPAttrType]BGPAttrFlag = map[BGPAttrType]BGPAttrFlag{
 	BGP_ATTR_TYPE_TUNNEL_ENCAP:         BGP_ATTR_FLAG_TRANSITIVE | BGP_ATTR_FLAG_OPTIONAL,
 	BGP_ATTR_TYPE_AIGP:                 BGP_ATTR_FLAG_OPTIONAL,
 	BGP_ATTR_TYPE_LARGE_COMMUNITY:      BGP_ATTR_FLAG_TRANSITIVE | BGP_ATTR_FLAG_OPTIONAL,
+	BGP_ATTR_TYPE_BGPSEC:               BGP_ATTR_FLAG_OPTIONAL,
 }
 
 type PathAttributeInterface interface {
@@ -4371,6 +4373,326 @@ func NewPathAttributeOrigin(value uint8) *PathAttributeOrigin {
 		},
 	}
 }
+
+/* Bgpsec declaration */
+//---------------------------------------------
+
+type SecurePathInterface interface {
+	DecodeFromBytes([]byte) error
+	Serialize() ([]byte, error)
+	String() string
+	MarshalJSON() ([]byte, error)
+	Len() int
+}
+
+type SignatureBlockInterface interface {
+	DecodeFromBytes([]byte) error
+	Serialize() ([]byte, error)
+	String() string
+	MarshalJSON() ([]byte, error)
+	Len() int
+}
+
+type PathAttributeBgpsec struct {
+	PathAttribute
+	//Value []uint8
+	SecurePathValue     []SecurePathInterface
+	SignatureBlockValue []SignatureBlockInterface
+}
+
+func (p *PathAttributeBgpsec) String() string {
+	return fmt.Sprintf("{bgpsecs}")
+}
+
+func (p *PathAttributeBgpsec) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Type  BGPAttrType `json:"type"`
+		Value uint8       `json:"value"`
+	}{
+		Type:  p.GetType(),
+		Value: p.Value[0],
+	})
+}
+
+func (p *PathAttributeBgpsec) Serialize() ([]byte, error) {
+	buf := make([]byte, 0)
+	for _, v := range p.SecurePathValue {
+		vbuf, err := v.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, vbuf...)
+	}
+
+	for _, v := range p.SignatureBlockValue {
+		vbuf, err := v.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, vbuf...)
+	}
+	p.PathAttribute.Value = buf
+	return p.PathAttribute.Serialize()
+}
+
+func (p *PathAttributeBgpsec) DecodeFromBytes(data []byte) error {
+	err := p.PathAttribute.DecodeFromBytes(data)
+	if err != nil {
+		return err
+	}
+	//if p.PathAttribute.Length == 0 {
+	// ibgp or something
+	//	return nil
+	//}
+
+	v := p.PathAttribute.Value
+	if len(v) > 0 {
+
+		/* Secure path decoding */
+		var sp SecurePathInterface
+		sp = &SecurePath{}
+		err := sp.DecodeFromBytes(v)
+		if err != nil {
+			return err
+		}
+		p.SecurePathValue = append(p.SecurePathValue, sp)
+		v = v[sp.Len():]
+
+		/* signature block decode */
+		var sb SignatureBlockInterface
+		sb = &SignatureBlock{}
+		err = sb.DecodeFromBytes(v)
+		if err != nil {
+			return err
+		}
+		p.SignatureBlockValue = append(p.SignatureBlockValue, sb)
+
+	}
+
+	return nil
+}
+
+func NewPathAttributeBgpsec(sp_value []SecurePathInterface, sb_value []SignatureBlockInterface) *PathAttributeBgpsec {
+	//value := append(byte(sp_value), byte(sb_value))
+	return &PathAttributeBgpsec{
+		PathAttribute: PathAttribute{
+			Flags: PathAttrFlags[BGP_ATTR_TYPE_BGPSEC] | BGP_ATTR_FLAG_EXTENDED_LENGTH,
+			Type:  BGP_ATTR_TYPE_BGPSEC,
+			//Value: []byte{byte(sp_value)},
+		},
+		SecurePathValue:     sp_value,
+		SignatureBlockValue: sb_value,
+	}
+}
+
+type BgpsecPathAttrInterface interface {
+	DecodeFromBytes([]byte) error
+	Serialize() ([]byte, error)
+	String() string
+	MarshalJSON() ([]byte, error)
+	Len() int
+}
+
+/*
+type BgpsecPathAttr struct {
+	_BgpsecSecurePath
+	_BgpsecSignatureBlock
+}
+*/
+
+type SecurePathSegment struct {
+	PCount uint8
+	Flags  uint8
+	ASN    uint32
+}
+
+func (sp *SecurePathSegment) Serialize() ([]byte, error) {
+	buf := make([]byte, 1+1+4) //  pCount:1 Flags:1 ASN:4
+
+	buf[0] = sp.PCount
+	buf[1] = sp.Flags
+	binary.BigEndian.PutUint32(buf[2:], sp.ASN)
+
+	return buf, nil
+}
+
+type SecurePath struct {
+	Length             uint16
+	SecurePathSegments []SecurePathSegment
+}
+
+func (sp *SecurePath) DecodeFromBytes(data []byte) error {
+	eCode := uint8(BGP_ERROR_UPDATE_MESSAGE_ERROR)
+	eSubCode := uint8(BGP_ERROR_SUB_OPTIONAL_ATTRIBUTE_ERROR)
+	if len(data) < 6 {
+		return NewMessageError(eCode, eSubCode, nil, "SecurePath param length is short")
+	}
+
+	sp.Length = binary.BigEndian.Uint16(data[0:2])
+	data = data[2:]
+	numberSp := sp.Length / 6
+	sps := make([]SecurePathSegment, numberSp)
+
+	for i := 0; i < int(numberSp); i++ {
+		sps[i].PCount = uint8(data[i*6+0])
+		sps[i].Flags = uint8(data[i*6+1])
+		sps[i].ASN = binary.BigEndian.Uint32(data[i*6+2 : i*6+6])
+		data = data[i*6+6:]
+	}
+
+	sp.SecurePathSegments = sps
+
+	return nil
+}
+
+func (sp *SecurePath) Serialize() ([]byte, error) {
+	buf := make([]byte, 2+(1+1+4)) // SecurePath Length:2  pCount:1 Flags:1 ASN:4
+
+	binary.BigEndian.PutUint16(buf[0:2], sp.Length)
+
+	for i, segment := range sp.SecurePathSegments {
+		v, err := segment.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		copy(buf[2+i*6:], v)
+	}
+
+	return buf, nil
+}
+
+func (sp *SecurePath) String() string {
+	return ""
+}
+
+func (sp *SecurePath) MarshalJSON() ([]byte, error) {
+	return nil, nil
+}
+
+func (sp *SecurePath) Len() int {
+	return 1 + 1 + 4
+}
+
+type SignatureSegment struct {
+	SKI       [20]uint8
+	Length    uint16
+	Signature []uint8
+}
+
+func (ss *SignatureSegment) Serialize() ([]byte, error) {
+	/* signature :=
+	30 45 02 20 79 5b 3c c9 4c 11 a4 48 0c 78 c0 77
+	41 5a be 04 c6 9e 83 d1 1a e6 24 16 a1 8c 6b c8
+	1a 31 71 5a 02 21 00 f1 aa f1 40 38 87 d9 07 19
+	c6 ab 6d 9d 3d 06 5c 42 2d 09 72 dd 7f 93 fb fc
+	e4 95 fd aa 0a c2 91
+	*/
+	//SKI := "C30433FA1975FF193181458FB902B501EA9789DC"
+	var ski_value []uint8
+	//#SKI     = '492AAE72485D926CACDA2D259BE19DAE82DFBDE3'
+
+	buf := make([]byte, ss.Length+20+2) //  SKI:20	Length:2
+
+	//for i, _ := range ss.SKI {
+	for i, v := range ss.SKI {
+		if i > 19 {
+			break
+		}
+		//n, _ := strconv.ParseUint(ss.SKI[2*i:2*i+2], 16, 8) // base:16, upto 8 bit
+		ski_value = append(ski_value, uint8(v))
+		//fmt.Printf("%d - %x ", i, uint8(n))
+	}
+	copy(buf[:20], ski_value)
+	/*
+		t := make([]byte, len(buf)+len(ss.Signature))
+		copy(t, buf)
+		buf = t
+	*/
+
+	binary.BigEndian.PutUint16(buf[20:22], ss.Length)
+	//buf = append(buf, ss.Length)
+	buf = append(buf, ss.Signature...)
+
+	return buf, nil
+}
+
+func (ss *SignatureSegment) DecodeFromBytes(data []byte) error {
+	eCode := uint8(BGP_ERROR_UPDATE_MESSAGE_ERROR)
+	eSubCode := uint8(BGP_ERROR_SUB_OPTIONAL_ATTRIBUTE_ERROR)
+	if len(data) < 70 {
+		return NewMessageError(eCode, eSubCode, nil, "Signature Segment param length is short")
+	}
+
+	for i := 0; i < 20; i++ {
+		ss.SKI[i] = uint8(data[i])
+	}
+	ss.Length = binary.BigEndian.Uint16(data[20:22])
+
+	return nil
+}
+
+type SignatureBlock struct {
+	Length            uint16
+	AID               uint8
+	SignatureSegments []SignatureSegment
+}
+
+func (sb *SignatureBlock) DecodeFromBytes(data []byte) error {
+	eCode := uint8(BGP_ERROR_UPDATE_MESSAGE_ERROR)
+	eSubCode := uint8(BGP_ERROR_SUB_OPTIONAL_ATTRIBUTE_ERROR)
+	if len(data) < (20 + 2 + 1 + 70) {
+		return NewMessageError(eCode, eSubCode, nil, "SecurePath param length is short")
+	}
+	sb.Length = binary.BigEndian.Uint16(data[0:2])
+	sb.AID = data[2]
+	data = data[3:]
+
+	var ss SignatureSegment
+	var totSigLen uint16
+	for _, ss = range sb.SignatureSegments {
+		err := ss.DecodeFromBytes(data)
+		if err != nil {
+			return err
+		}
+
+		totSigLen = totSigLen + ss.Length + 2 + 20
+		if sb.Length > totSigLen {
+			data = data[ss.Length+2+20:]
+		}
+	}
+
+	return nil
+}
+
+func (sb *SignatureBlock) Serialize() ([]byte, error) {
+	buf := make([]byte, 3)
+	binary.BigEndian.PutUint16(buf[0:], sb.Length)
+	buf[2] = sb.AID
+
+	for _, segment := range sb.SignatureSegments {
+		v, err := segment.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, v...)
+	}
+
+	return buf, nil
+}
+
+func (sb *SignatureBlock) String() string {
+	return ""
+}
+
+func (sb *SignatureBlock) MarshalJSON() ([]byte, error) {
+	return nil, nil
+}
+
+func (sb *SignatureBlock) Len() int {
+	return 0
+}
+
+//---------------------------------------------
 
 type AsPathParamFormat struct {
 	start     string
@@ -7252,6 +7574,8 @@ func GetPathAttribute(data []byte) (PathAttributeInterface, error) {
 		return &PathAttributeAigp{}, nil
 	case BGP_ATTR_TYPE_LARGE_COMMUNITY:
 		return &PathAttributeLargeCommunities{}, nil
+	case BGP_ATTR_TYPE_BGPSEC:
+		return &PathAttributeBgpsec{}, nil
 	}
 	return &PathAttributeUnknown{}, nil
 }

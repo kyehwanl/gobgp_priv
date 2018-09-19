@@ -75,6 +75,7 @@ const (
 	CMD_BMP            = "bmp"
 	CMD_LARGECOMMUNITY = "large-community"
 	CMD_SUMMARY        = "summary"
+	CMD_BGPSEC         = "bgpsec"
 )
 
 var subOpts struct {

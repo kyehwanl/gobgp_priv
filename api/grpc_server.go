@@ -499,6 +499,7 @@ func (s *Server) api2PathList(resource Resource, ApiPathList []*Path) ([]*table.
 	var nexthop string
 	var pi *table.PeerInfo
 	var err error
+	var bgpsec_flag bool
 
 	pathList := make([]*table.Path, 0, len(ApiPathList))
 	for _, path := range ApiPathList {
@@ -556,6 +557,11 @@ func (s *Server) api2PathList(resource Resource, ApiPathList []*Path) ([]*table.
 				}
 				nlri = mpreach.Value[0]
 				nexthop = mpreach.Nexthop.String()
+
+			case bgp.BGP_ATTR_TYPE_BGPSEC:
+				bgpsec_flag = true
+				pattr = append(pattr, p)
+
 			default:
 				pattr = append(pattr, p)
 			}
@@ -565,7 +571,12 @@ func (s *Server) api2PathList(resource Resource, ApiPathList []*Path) ([]*table.
 			return nil, fmt.Errorf("not found nlri or nexthop")
 		}
 
-		if resource != Resource_VRF && bgp.RouteFamily(path.Family) == bgp.RF_IPv4_UC {
+		if bgpsec_flag {
+			fmt.Printf("+++ [grpc_server:api2PathList] bgpsec enabled")
+		}
+
+		if resource != Resource_VRF && bgp.RouteFamily(path.Family) == bgp.RF_IPv4_UC && !bgpsec_flag {
+			//if resource != Resource_VRF && bgp.RouteFamily(path.Family) == bgp.RF_IPv4_UC {
 			pattr = append(pattr, bgp.NewPathAttributeNextHop(nexthop))
 		} else {
 			pattr = append(pattr, bgp.NewPathAttributeMpReachNLRI(nexthop, []bgp.AddrPrefixInterface{nlri}))

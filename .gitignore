@@ -32,3 +32,4 @@ cscope.*
 tags
 gotags
 .gitignore
+make_gotags.sh

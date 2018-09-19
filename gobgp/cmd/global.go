@@ -511,6 +511,21 @@ func extractOrigin(args []string) ([]string, bgp.PathAttributeInterface, error) 
 	}
 	return args, bgp.NewPathAttributeOrigin(uint8(typ)), nil
 }
+
+func extractBgpsec(args []string) ([]string, bgp.PathAttributeInterface, error) {
+	for idx, arg := range args {
+		if arg == "bgpsec" && len(args) > (idx) {
+			fmt.Printf("+++++++++ BGPSec called +++++++++++++\n")
+			args = append(args[:idx], args[idx+1:]...)
+
+			spParams := make([]bgp.SecurePathInterface, 0)
+			sbParams := make([]bgp.SignatureBlockInterface, 0)
+			return args, bgp.NewPathAttributeBgpsec(spParams, sbParams), nil
+		}
+	}
+	return args, nil, nil
+}
+
 func extractNexthop(rf bgp.RouteFamily, args []string) ([]string, string, error) {
 	afi, _ := bgp.RouteFamilyToAfiSafi(rf)
 	nexthop := "0.0.0.0"
@@ -661,6 +676,7 @@ func ParsePath(rf bgp.RouteFamily, args []string) (*table.Path, error) {
 	var rd bgp.RouteDistinguisherInterface
 	var extcomms []string
 	var err error
+	var bgpsec_flag bool
 	attrs := table.PathAttrs(make([]bgp.PathAttributeInterface, 0, 1))
 
 	fns := []func([]string) ([]string, bgp.PathAttributeInterface, error){
@@ -670,7 +686,19 @@ func ParsePath(rf bgp.RouteFamily, args []string) (*table.Path, error) {
 		extractCommunity,
 		extractAigp,
 		extractAggregator,
+		extractBgpsec,
 		extractLargeCommunity,
+	}
+
+	/* find bgpsec argument */
+	bgpsec_flag = false
+	for _, arg := range args {
+		if arg == "bgpsec" {
+			bgpsec_flag = true
+		}
+	}
+	if bgpsec_flag == true {
+		fmt.Printf("+++ bgpsec configuration found \n")
 	}
 
 	for _, fn := range fns {
@@ -797,7 +825,8 @@ func ParsePath(rf bgp.RouteFamily, args []string) (*table.Path, error) {
 		return nil, err
 	}
 
-	if rf == bgp.RF_IPv4_UC {
+	if rf == bgp.RF_IPv4_UC && bgpsec_flag != true {
+		//if rf == bgp.RF_IPv4_UC {
 		attrs = append(attrs, bgp.NewPathAttributeNextHop(nexthop))
 	} else {
 		mpreach := bgp.NewPathAttributeMpReachNLRI(nexthop, []bgp.AddrPrefixInterface{nlri})

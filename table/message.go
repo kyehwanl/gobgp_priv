@@ -258,6 +258,7 @@ func UpdatePathAggregator4ByteAs(msg *bgp.BGPUpdate) error {
 
 func createUpdateMsgFromPath(path *Path, msg *bgp.BGPMessage) *bgp.BGPMessage {
 	rf := path.GetRouteFamily()
+	var bgpsec_flag bool
 
 	if rf == bgp.RF_IPv4_UC {
 		nlri := path.GetNlri().(*bgp.IPAddrPrefix)
@@ -275,7 +276,18 @@ func createUpdateMsgFromPath(path *Path, msg *bgp.BGPMessage) *bgp.BGPMessage {
 				u.NLRI = append(u.NLRI, nlri)
 			} else {
 				pathAttrs := path.GetPathAttrs()
-				return bgp.NewBGPUpdateMessage(nil, pathAttrs, []*bgp.IPAddrPrefix{nlri})
+
+				for _, a := range path.pathAttrs {
+					if typ := a.GetType(); typ == bgp.BGP_ATTR_TYPE_BGPSEC {
+						bgpsec_flag = true
+					}
+				}
+				if bgpsec_flag {
+					return bgp.NewBGPUpdateMessage(nil, pathAttrs, nil)
+				} else {
+					return bgp.NewBGPUpdateMessage(nil, pathAttrs, []*bgp.IPAddrPrefix{nlri})
+				}
+
 			}
 		}
 	} else {

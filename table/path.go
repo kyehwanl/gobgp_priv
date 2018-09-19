@@ -22,6 +22,7 @@ import (
 	"math"
 	"net"
 	"sort"
+	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -176,6 +177,75 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 		}
 	}
 
+	/* bgpsec path attr add */
+	if peer.Config.BgpsecEnable {
+
+		for _, a := range path.GetPathAttrs() {
+			typ := a.GetType()
+			if typ == bgp.BGP_ATTR_TYPE_AS_PATH {
+				path.delPathAttr(typ)
+			}
+
+			if typ == bgp.BGP_ATTR_TYPE_BGPSEC {
+
+				fmt.Printf("HERE bgpsec again\n")
+
+				var sp bgp.SecurePathInterface
+				sp = &bgp.SecurePath{
+					Length: 8,
+					SecurePathSegments: []bgp.SecurePathSegment{
+						{PCount: 1, Flags: 0, ASN: peer.Config.LocalAs},
+					},
+				}
+				sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
+				sp_value = append(sp_value, sp)
+				//pattr = append(pattr, bgp.NewPathAttributeBgpsec(value))
+
+				var sb bgp.SignatureBlockInterface
+				sb = &bgp.SignatureBlock{
+					Length: 95,
+					AID:    1,
+					SignatureSegments: []bgp.SignatureSegment{
+						{
+							SKI:       [20]uint8{0},
+							Length:    70,
+							Signature: nil,
+						},
+					},
+				}
+
+				ski_value := &sb.(*bgp.SignatureBlock).SignatureSegments[0].SKI
+				ski := peer.Config.Ski
+				for i, _ := range ski {
+					if i > 19 {
+						break
+					}
+					n, _ := strconv.ParseUint(ski[2*i:2*i+2], 16, 8) // base:16, upto 8 bit
+					ski_value[i] = uint8(n)
+					//fmt.Printf("%d - %x ", i, uint8(n))
+				}
+
+				sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
+				sb_value = append(sb_value, sb)
+
+				path.setPathAttr(bgp.NewPathAttributeBgpsec(sp_value, sb_value))
+				//pattr = append(pattr, bgp.NewPathAttributeBgpsec(sp_value, sb_value))
+
+			}
+		}
+		/* TODO: for bgpsec, remove nlri */
+		/*
+			p := path
+			if p.info == nil {
+				p = p.parent
+			}
+			if p.info != nil {
+				p.info.nlri = nil
+			}
+		*/
+
+	}
+
 	localAddress := net.ParseIP(peer.Transport.State.LocalAddress)
 	isZero := func(ip net.IP) bool {
 		return ip.Equal(net.ParseIP("0.0.0.0")) || ip.Equal(net.ParseIP("::"))
@@ -188,7 +258,10 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 		}
 
 		// AS_PATH handling
-		path.PrependAsn(peer.Config.LocalAs, 1)
+		// TODO: in case of bgpsec enabled, need to eliminate commented-out below
+		if !peer.Config.BgpsecEnable {
+			path.PrependAsn(peer.Config.LocalAs, 1)
+		}
 
 		// MED Handling
 		if med := path.getPathAttr(bgp.BGP_ATTR_TYPE_MULTI_EXIT_DISC); med != nil && !path.IsLocal() {

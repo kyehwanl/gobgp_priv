@@ -2350,6 +2350,9 @@ type NeighborConfig struct {
 	NeighborInterface string `mapstructure:"neighbor-interface" json:"neighbor-interface,omitempty"`
 	// original -> gobgp:vrf
 	Vrf string `mapstructure:"vrf" json:"vrf,omitempty"`
+	// bgpsec enable added
+	BgpsecEnable bool   `mapstructure:"bgpsec-enable" json:"bgpsec-enable,omitempty"`
+	Ski          string `mapstructure:"SKI" json:"SKI,omitempty"`
 }
 
 func (lhs *NeighborConfig) Equal(rhs *NeighborConfig) bool {
@@ -2393,6 +2396,12 @@ func (lhs *NeighborConfig) Equal(rhs *NeighborConfig) bool {
 		return false
 	}
 	if lhs.Vrf != rhs.Vrf {
+		return false
+	}
+	if lhs.BgpsecEnable != rhs.BgpsecEnable {
+		return false
+	}
+	if lhs.Ski != rhs.Ski {
 		return false
 	}
 	return true
