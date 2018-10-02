@@ -22,11 +22,11 @@ package bgp
 #include "srxcryptoapi.h"
 
 void PrintPacked(SCA_BGPSEC_SecurePathSegment p){
-     printf("From C\n  pCount:\t%d\n  flags:\t%x\n  asn:\t%d\n\n", p.pCount, p.flags, p.asn);
+     printf("From C path segment \n  pCount:\t%d\n  flags:\t%x\n  asn:\t%d\n\n", p.pCount, p.flags, p.asn);
 }
 
 void PrintSCA_Prefix(SCA_Prefix p){
-	printf("From C\n  afi:\t%d\n  safi:\t%d\n  length:\t%d\n  addr:\t%x\n\n",
+	printf("From C prefix\n  afi:\t%d\n  safi:\t%d\n  length:\t%d\n  addr:\t%x\n\n",
 		p.afi, p.safi, p.length, p.addr.ip);
 }
 
@@ -4738,7 +4738,7 @@ type Go_SCA_Prefix struct {
 func (g *Go_SCA_Prefix) Pack(out unsafe.Pointer) {
 
 	buf := &bytes.Buffer{}
-	binary.Write(buf, binary.LittleEndian, g)
+	binary.Write(buf, binary.BigEndian, g)
 	l := buf.Len()
 	o := (*[1 << 20]C.uchar)(out)
 
@@ -4769,7 +4769,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	ga := &Go_SCA_Prefix{
 		afi:    bc.Afi,
 		safi:   bc.Safi,
-		length: (bc.PxLen + 7) / 8,
+		length: bc.PxLen,
 		addr:   [16]byte{},
 	}
 	prefix := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
@@ -4789,6 +4789,8 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	ga.Pack(unsafe.Pointer(prefix))
 	C.PrintSCA_Prefix(*prefix)
 
+	fmt.Printf("bc.Pxaddr: %#v, ga.addr: %#v, prefix.addr:%#v\n", bc.PxAddr, ga.addr, prefix)
+
 	//os.Exit(3)
 
 	// ------- Library call: printHex function test ----------
@@ -4803,7 +4805,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	// ------ secure Path segment generation ---------------
 	u := &Go_SCA_BGPSEC_SecurePathSegment{
 		pCount: 1,
-		flags:  0x90,
+		flags:  0x0,
 		asn:    bc.Peer_as,
 	}
 	sps := (*C.SCA_BGPSEC_SecurePathSegment)(C.malloc(C.sizeof_SCA_BGPSEC_SecurePathSegment))
@@ -4842,8 +4844,18 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	//bgpsecData.hashMessage = (*C.SCA_HashMessage)(hash)
 	//bgpsecData.hashMessage = nil
 
+	var peeras uint32 = bc.Local_as
+	big := make([]byte, 4, 4)
+	for i := 0; i < 4; i++ {
+		u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&peeras)) + uintptr(i)))
+		big = append(big, u8)
+	}
+
+	fmt.Printf("++ peerAS :%#v\n", big)
+	fmt.Printf("++ peerAS BigEndian :%#v\n", binary.BigEndian.Uint32(big[4:8]))
+
 	bgpsecData := C.SCA_BGPSecSignData{
-		peerAS:      C.uint(bc.Local_as),
+		peerAS:      C.uint(binary.BigEndian.Uint32(big[4:8])),
 		myHost:      sps,
 		nlri:        prefix,
 		myASN:       C.uint(bc.Peer_as),

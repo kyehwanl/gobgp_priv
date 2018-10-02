@@ -252,6 +252,7 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 					Safi:     nlri_safi,
 				}
 
+				fmt.Printf("++ prefix_addr: %#v \n", prefix_addr)
 				signature, sigLen := bc.GenerateSignature(60003)
 
 				fmt.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
