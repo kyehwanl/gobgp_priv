@@ -180,6 +180,23 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 	/* bgpsec path attr add */
 	if peer.Config.BgpsecEnable {
 
+		var prefix_addr net.IP
+		var prefix_len uint8
+		var nlri_afi uint16
+		var nlri_safi uint8
+
+		// TODO: [Done] find nlri attribute first and extract prefix info
+		for _, a := range path.GetPathAttrs() {
+			typ := a.GetType()
+			if typ == bgp.BGP_ATTR_TYPE_MP_REACH_NLRI {
+				fmt.Printf("MP NLRI: %#v\n", a)
+				prefix_addr = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
+				prefix_len = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
+				nlri_afi = a.(*bgp.PathAttributeMpReachNLRI).AFI
+				nlri_safi = a.(*bgp.PathAttributeMpReachNLRI).SAFI
+			}
+		}
+
 		for _, a := range path.GetPathAttrs() {
 			typ := a.GetType()
 			if typ == bgp.BGP_ATTR_TYPE_AS_PATH {
@@ -208,7 +225,7 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 					SignatureSegments: []bgp.SignatureSegment{
 						{
 							SKI:       [20]uint8{0},
-							Length:    70,
+							Length:    0,
 							Signature: nil,
 						},
 					},
@@ -225,8 +242,34 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 					//fmt.Printf("%d - %x ", i, uint8(n))
 				}
 
+				bc := &bgp.BgpsecCrypto{
+					Peer_as:  peer.Config.LocalAs,
+					Local_as: peer.Config.PeerAs,
+					SKI_str:  peer.Config.Ski,
+					PxAddr:   prefix_addr,
+					PxLen:    prefix_len,
+					Afi:      nlri_afi,
+					Safi:     nlri_safi,
+				}
+
+				signature, sigLen := bc.GenerateSignature(60003)
+
+				fmt.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
+
+				//sig_value := sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature
+				//sig_value = append(sig_value[:], []uint8(signature))
+				//fmt.Printf("++ sig value : %#v\n\n", sig_value)
+				//fmt.Printf("++ SignatureSegment:signature : %#v\n\n", sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature)
+
+				sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature = signature
+				sb.(*bgp.SignatureBlock).SignatureSegments[0].Length = sigLen
+				sb.(*bgp.SignatureBlock).Length = sigLen + 20 + 2 + 1 + 2
+				fmt.Printf("++ sb Length: %d\n", sb.(*bgp.SignatureBlock).Length)
+
 				sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
 				sb_value = append(sb_value, sb)
+
+				fmt.Printf("++ sb_value: %#v\n\n", sb_value)
 
 				path.setPathAttr(bgp.NewPathAttributeBgpsec(sp_value, sb_value))
 				//pattr = append(pattr, bgp.NewPathAttributeBgpsec(sp_value, sb_value))

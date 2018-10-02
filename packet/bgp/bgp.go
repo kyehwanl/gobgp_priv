@@ -15,9 +15,30 @@
 
 package bgp
 
+/*
+#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
+#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+#include <stdio.h>
+#include "srxcryptoapi.h"
+
+void PrintPacked(SCA_BGPSEC_SecurePathSegment p){
+     printf("From C\n  pCount:\t%d\n  flags:\t%x\n  asn:\t%d\n\n", p.pCount, p.flags, p.asn);
+}
+
+void PrintSCA_Prefix(SCA_Prefix p){
+	printf("From C\n  afi:\t%d\n  safi:\t%d\n  length:\t%d\n  addr:\t%x\n\n",
+		p.afi, p.safi, p.length, p.addr.ip);
+}
+
+int _sign(SCA_BGPSecSignData* signData );
+void printHex(int len, unsigned char* buff);
+*/
+import "C"
+
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -26,6 +47,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unsafe"
 )
 
 const (
@@ -4580,20 +4602,10 @@ type SignatureSegment struct {
 }
 
 func (ss *SignatureSegment) Serialize() ([]byte, error) {
-	/* signature :=
-	30 45 02 20 79 5b 3c c9 4c 11 a4 48 0c 78 c0 77
-	41 5a be 04 c6 9e 83 d1 1a e6 24 16 a1 8c 6b c8
-	1a 31 71 5a 02 21 00 f1 aa f1 40 38 87 d9 07 19
-	c6 ab 6d 9d 3d 06 5c 42 2d 09 72 dd 7f 93 fb fc
-	e4 95 fd aa 0a c2 91
-	*/
-	//SKI := "C30433FA1975FF193181458FB902B501EA9789DC"
 	var ski_value []uint8
-	//#SKI     = '492AAE72485D926CACDA2D259BE19DAE82DFBDE3'
 
-	buf := make([]byte, ss.Length+20+2) //  SKI:20	Length:2
+	buf := make([]byte, 20+2, ss.Length+20+2) //  SKI:20	Length:2
 
-	//for i, _ := range ss.SKI {
 	for i, v := range ss.SKI {
 		if i > 19 {
 			break
@@ -4603,14 +4615,8 @@ func (ss *SignatureSegment) Serialize() ([]byte, error) {
 		//fmt.Printf("%d - %x ", i, uint8(n))
 	}
 	copy(buf[:20], ski_value)
-	/*
-		t := make([]byte, len(buf)+len(ss.Signature))
-		copy(t, buf)
-		buf = t
-	*/
 
 	binary.BigEndian.PutUint16(buf[20:22], ss.Length)
-	//buf = append(buf, ss.Length)
 	buf = append(buf, ss.Signature...)
 
 	return buf, nil
@@ -4690,6 +4696,203 @@ func (sb *SignatureBlock) MarshalJSON() ([]byte, error) {
 
 func (sb *SignatureBlock) Len() int {
 	return 0
+}
+
+type Go_SCA_BGPSEC_SecurePathSegment struct {
+	pCount uint8
+	flags  uint8
+	asn    uint32
+}
+
+func (g *Go_SCA_BGPSEC_SecurePathSegment) Pack(out unsafe.Pointer) {
+
+	buf := &bytes.Buffer{}
+	/*
+	   binary.Write(buf, binary.LittleEndian, g.pCount)
+	   binary.Write(buf, binary.LittleEndian, g.flags)
+	   binary.Write(buf, binary.LittleEndian, g.asn)
+	*/
+	//binary.Write(buf, binary.LittleEndian, g)
+	binary.Write(buf, binary.BigEndian, g)
+
+	// get the length of memory
+	l := buf.Len()
+
+	//Cast the point to byte slie to allow for direct memory manipulation
+	o := (*[1 << 20]C.uchar)(out)
+
+	//Write to memory
+	for i := 0; i < l; i++ {
+		b, _ := buf.ReadByte()
+		o[i] = C.uchar(b)
+	}
+}
+
+type Go_SCA_Prefix struct {
+	afi    uint16
+	safi   uint8
+	length uint8
+	addr   [16]uint8
+}
+
+func (g *Go_SCA_Prefix) Pack(out unsafe.Pointer) {
+
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.LittleEndian, g)
+	l := buf.Len()
+	o := (*[1 << 20]C.uchar)(out)
+
+	for i := 0; i < l; i++ {
+		b, _ := buf.ReadByte()
+		o[i] = C.uchar(b)
+	}
+}
+
+type BgpsecCrypto struct {
+	Peer_as  uint32
+	Local_as uint32
+	SKI_str  string
+	PxAddr   net.IP
+	PxLen    uint8
+	Afi      uint16
+	Safi     uint8
+}
+
+func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
+
+	//
+	//  call _sign() function
+	//
+	fmt.Printf("+ bgpsec sign data testing...\n\n")
+
+	// ------ prefix handling ---------------
+	ga := &Go_SCA_Prefix{
+		afi:    bc.Afi,
+		safi:   bc.Safi,
+		length: (bc.PxLen + 7) / 8,
+		addr:   [16]byte{},
+	}
+	prefix := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
+	//ad := C.SCA_Prefix{}
+	//ipstr := "100.1.1.0"
+	//IPAddress := net.ParseIP(ipstr)
+	//copy(ga.addr[:], IPAddress[12:16])
+	copy(ga.addr[:], bc.PxAddr)
+
+	//fmt.Printf("ipaddress: %#v\n", IPAddress )
+	//fmt.Println("4-byte rep: ", IPAddress.To4())
+	//fmt.Println("ip: ", binary.BigEndian.Uint32(IPAddress[12:16]))
+
+	//ga.Pack(unsafe.Pointer(&ad))
+	//C.PrintSCA_Prefix(ad)
+
+	ga.Pack(unsafe.Pointer(prefix))
+	C.PrintSCA_Prefix(*prefix)
+
+	//os.Exit(3)
+
+	// ------- Library call: printHex function test ----------
+	b := [...]byte{0x11, 0x22, 0x33}
+	var cb [10]C.uchar
+	cb[0] = C.uchar(b[0])
+	cb[1] = C.uchar(b[1])
+	cb[2] = C.uchar(b[2])
+	//cb := C.uchar(b)
+	C.printHex(C.int(10), &cb[0])
+
+	// ------ secure Path segment generation ---------------
+	u := &Go_SCA_BGPSEC_SecurePathSegment{
+		pCount: 1,
+		flags:  0x90,
+		asn:    bc.Peer_as,
+	}
+	sps := (*C.SCA_BGPSEC_SecurePathSegment)(C.malloc(C.sizeof_SCA_BGPSEC_SecurePathSegment))
+	u.Pack(unsafe.Pointer(sps))
+
+	//fmt.Printf("data:%#v\n\n", *sps)
+	//fmt.Printf("data:%+v\n\n", *sps)
+	C.PrintPacked(*sps)
+
+	// ------ ski handling ---------------
+	//bs, _ := hex.DecodeString("45CAD0AC44F77EFAA94602E9984305215BF47DCD")
+	bs, _ := hex.DecodeString(bc.SKI_str)
+	fmt.Printf("type of bs: %T\n", bs)
+	fmt.Printf("string test: %02X \n", bs)
+
+	cbuf := (*[20]C.uchar)(C.malloc(20))
+	cstr := (*[20]C.uchar)(unsafe.Pointer(&bs[0]))
+	for i := 0; i < 20; i++ {
+		cbuf[i] = cstr[i]
+	}
+
+	// ------ hash message handling  ---------------
+	hashData := C.SCA_HashMessage{
+		ownedByAPI:        true,
+		bufferSize:        100,
+		buffer:            nil,
+		segmentCount:      1,
+		hashMessageValPtr: nil,
+	}
+	hash := C.malloc(C.sizeof_SCA_HashMessage)
+	h1 := (*[1000]C.uchar)(unsafe.Pointer(&hashData))
+	h2 := (*[1000]C.uchar)(hash)
+	for i := 0; i < C.sizeof_SCA_HashMessage; i++ {
+		h2[i] = h1[i]
+	}
+	//bgpsecData.hashMessage = (*C.SCA_HashMessage)(hash)
+	//bgpsecData.hashMessage = nil
+
+	bgpsecData := C.SCA_BGPSecSignData{
+		peerAS:      C.uint(bc.Local_as),
+		myHost:      sps,
+		nlri:        prefix,
+		myASN:       C.uint(bc.Peer_as),
+		ski:         (*C.uchar)(&cbuf[0]),
+		algorithmID: 1,
+		status:      C.sca_status_t(0),
+		hashMessage: nil,
+		signature:   nil,
+	}
+
+	retVal := C._sign(&bgpsecData)
+
+	fmt.Println("return: value:", retVal, " and status: ", bgpsecData.status)
+	if retVal == 1 {
+		fmt.Println(" _sign function SUCCESS ...")
+
+		if bgpsecData.signature != nil {
+			fmt.Printf("signature: %#v\n", bgpsecData.signature)
+
+			ret_array := func(sig_data *C.SCA_Signature) []uint8 {
+				buf := make([]uint8, 0, uint(sig_data.sigLen))
+				for i := 0; i < int(sig_data.sigLen); i++ {
+					u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(sig_data.sigBuff)) + uintptr(i)))
+					buf = append(buf, u8)
+				}
+				return buf
+			}(bgpsecData.signature)
+
+			fmt.Println("ret:", ret_array)
+
+			return []byte(ret_array), uint16(bgpsecData.signature.sigLen)
+		}
+
+	} else if retVal == 0 {
+		fmt.Println(" _sign function Failed ...")
+		switch bgpsecData.status {
+		case 1:
+			fmt.Println("signature error")
+		case 2:
+			fmt.Println("Key not found")
+		case 0x10000:
+			fmt.Println("no data")
+		case 0x20000:
+			fmt.Println("no prefix")
+		case 0x40000:
+			fmt.Println("Invalid key")
+		}
+	}
+	return nil, 0
 }
 
 //---------------------------------------------

@@ -107,14 +107,17 @@ type BgpServer struct {
 	zclient     *zebraClient
 	bmpManager  *bmpClientManager
 	mrtManager  *mrtManager
+	bgpsec      *bgpsecManager
 }
 
 func NewBgpServer() *BgpServer {
 	roaManager, _ := NewROAManager(0)
+	bgpsecManager, _ := NewBgpsecManager(1)
 	s := &BgpServer{
 		neighborMap: make(map[string]*Peer),
 		policy:      table.NewRoutingPolicy(),
 		roaManager:  roaManager,
+		bgpsec:      bgpsecManager,
 		mgmtCh:      make(chan *mgmtOp, 1),
 		watcherMap:  make(map[WatchEventType][]*Watcher),
 	}
