@@ -1,0 +1,25 @@
+
+How to Build and Run
+====================
+
+(1) at gobgp root
+
+    go install -ldflags="-r /opt/project/gobgp_test/tools/go_srx_test" -gcflags='-N -l' ./...
+    go install -ldflags="-r /opt/project/gobgp_test/tools/go_srx_test" -gcflags='-N -l' ./...
+    go build -ldflags="-r /opt/project/gobgp_test/tools/go_srx_test" -gcflags='-N -l'
+
+        where, -ldflags, -r means rpath in binary
+               -gcflags, '-N -l' : gives additional debugging information in binary
+
+               '...' ellipsis (three dots): all packages in the current directory and its subdirectories on go command
+
+(2) at gobgpd
+    build without "./..."
+
+
+
+(3) ETC
+    go build 
+        -x : -x, print the commands (show all detailed compile information)
+        -d : dry run, print the commands but do not run them
+        -v : print the names of packages as they are compiled
