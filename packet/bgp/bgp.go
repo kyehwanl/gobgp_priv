@@ -19,6 +19,7 @@ package bgp
 #cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
 #cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #include <stdio.h>
+#include <stdlib.h>
 #include "srxcryptoapi.h"
 
 void PrintPacked(SCA_BGPSEC_SecurePathSegment p){
@@ -4773,6 +4774,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 		addr:   [16]byte{},
 	}
 	prefix := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
+	defer C.free(unsafe.Pointer(prefix))
 	//ad := C.SCA_Prefix{}
 	//ipstr := "100.1.1.0"
 	//IPAddress := net.ParseIP(ipstr)
@@ -4809,6 +4811,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 		asn:    bc.Peer_as,
 	}
 	sps := (*C.SCA_BGPSEC_SecurePathSegment)(C.malloc(C.sizeof_SCA_BGPSEC_SecurePathSegment))
+	defer C.free(unsafe.Pointer(sps))
 	u.Pack(unsafe.Pointer(sps))
 
 	//fmt.Printf("data:%#v\n\n", *sps)
@@ -4822,6 +4825,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	fmt.Printf("string test: %02X \n", bs)
 
 	cbuf := (*[20]C.uchar)(C.malloc(20))
+	defer C.free(unsafe.Pointer(cbuf))
 	cstr := (*[20]C.uchar)(unsafe.Pointer(&bs[0]))
 	for i := 0; i < 20; i++ {
 		cbuf[i] = cstr[i]
@@ -4836,6 +4840,7 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 		hashMessageValPtr: nil,
 	}
 	hash := C.malloc(C.sizeof_SCA_HashMessage)
+	defer C.free(unsafe.Pointer(hash))
 	h1 := (*[1000]C.uchar)(unsafe.Pointer(&hashData))
 	h2 := (*[1000]C.uchar)(hash)
 	for i := 0; i < C.sizeof_SCA_HashMessage; i++ {
