@@ -43,7 +43,8 @@ func (bm *bgpsecManager) BgpsecInit(as uint32) ([]byte, error) {
 	// --------- call Init() function ---------------------
 	fmt.Printf("+ Init call testing...\n\n")
 
-	str := C.CString("PRIV:/opt/project/srx_test1/keys/priv-ski-list.txt")
+	//str := C.CString("PRIV:/opt/project/srx_test1/keys/priv-ski-list.txt")
+	str := C.CString("PUB:/opt/project/srx_test1/keys/ski-list.txt;PRIV:/opt/project/srx_test1/keys/priv-ski-list.txt")
 	fmt.Printf("+ str: %s\n", C.GoString(str))
 
 	var stat *scaStatus

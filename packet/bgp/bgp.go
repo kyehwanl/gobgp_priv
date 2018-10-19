@@ -32,6 +32,7 @@ void PrintSCA_Prefix(SCA_Prefix p){
 }
 
 int _sign(SCA_BGPSecSignData* signData );
+int validate(SCA_BGPSecValidationData* data);
 void printHex(int len, unsigned char* buff);
 */
 import "C"
@@ -203,6 +204,8 @@ func (p PmsiTunnelType) String() string {
 		return fmt.Sprintf("PmsiTunnelType(%d)", uint8(p))
 	}
 }
+
+var gMyAs uint16
 
 type EncapSubTLVType uint8
 
@@ -908,6 +911,7 @@ func (msg *BGPOpen) Serialize() ([]byte, error) {
 }
 
 func NewBGPOpenMessage(myas uint16, holdtime uint16, id string, optparams []OptionParameterInterface) *BGPMessage {
+	gMyAs = myas
 	return &BGPMessage{
 		Header: BGPHeader{Type: BGP_MSG_OPEN},
 		Body:   &BGPOpen{4, myas, holdtime, net.ParseIP(id).To4(), 0, optparams},
@@ -4463,6 +4467,8 @@ func (p *PathAttributeBgpsec) DecodeFromBytes(data []byte) error {
 	if err != nil {
 		return err
 	}
+
+	// TODO:
 	//if p.PathAttribute.Length == 0 {
 	// ibgp or something
 	//	return nil
@@ -4478,12 +4484,17 @@ func (p *PathAttributeBgpsec) DecodeFromBytes(data []byte) error {
 		if err != nil {
 			return err
 		}
+
+		// TODO: it is not multiple instance of Secure PathValue, 
+		// it will be Secure Path Segment, so the following line should not use 'append'
 		p.SecurePathValue = append(p.SecurePathValue, sp)
 		v = v[sp.Len():]
 
 		/* signature block decode */
 		var sb SignatureBlockInterface
 		sb = &SignatureBlock{}
+
+		//TODO: Later, need to consider multiple (2) signature block
 		err = sb.DecodeFromBytes(v)
 		if err != nil {
 			return err
@@ -4593,7 +4604,8 @@ func (sp *SecurePath) MarshalJSON() ([]byte, error) {
 }
 
 func (sp *SecurePath) Len() int {
-	return 1 + 1 + 4
+	//return 1 + 1 + 4
+	return int(sp.Length)
 }
 
 type SignatureSegment struct {
@@ -4630,10 +4642,18 @@ func (ss *SignatureSegment) DecodeFromBytes(data []byte) error {
 		return NewMessageError(eCode, eSubCode, nil, "Signature Segment param length is short")
 	}
 
+	// ski
 	for i := 0; i < 20; i++ {
 		ss.SKI[i] = uint8(data[i])
 	}
 	ss.Length = binary.BigEndian.Uint16(data[20:22])
+
+	// signature 
+	ss.Signature = make([]uint8, ss.Length) 
+	data = data[22:]
+	for i :=0; i< int(ss.Length); i++ {
+		ss.Signature[i] = uint8(data[i])
+	}
 
 	return nil
 }
@@ -4654,19 +4674,27 @@ func (sb *SignatureBlock) DecodeFromBytes(data []byte) error {
 	sb.AID = data[2]
 	data = data[3:]
 
-	var ss SignatureSegment
+	// TODO: here, 70 means least number of signature length,
+	// Later should be fixed or modified with more appropriate way
+	numberSs := sb.Length / (70+20+2+1+2)
+	sigseg := make([]SignatureSegment, numberSs )
+
 	var totSigLen uint16
-	for _, ss = range sb.SignatureSegments {
+
+	for i := 0; i < int(numberSs); i++ {
+		ss := &sigseg[i]
 		err := ss.DecodeFromBytes(data)
 		if err != nil {
 			return err
 		}
-
 		totSigLen = totSigLen + ss.Length + 2 + 20
+
+		// if there are multiple segments, fast forward to the next signature segment
 		if sb.Length > totSigLen {
-			data = data[ss.Length+2+20:]
+			data = data[ss.Length+2+20:] 
 		}
 	}
+	sb.SignatureSegments = sigseg
 
 	return nil
 }
@@ -7855,16 +7883,139 @@ func (msg *BGPUpdate) DecodeFromBytes(data []byte) error {
 		return NewMessageError(eCode, eSubCode, nil, "path total attribute length exceeds message length")
 	}
 
+		
+	var nlri_processed bool
+	var prefix_addr net.IP
+	var prefix_len uint8
+	var nlri_afi uint16
+	var nlri_safi uint8
+
 	msg.PathAttributes = []PathAttributeInterface{}
 	for pathlen := msg.TotalPathAttributeLen; pathlen > 0; {
 		p, err := GetPathAttribute(data)
 		if err != nil {
 			return err
 		}
+		
 		err = p.DecodeFromBytes(data)
 		if err != nil {
 			return err
 		}
+
+		//
+		// find nlri attribute first and extract prefix info for bgpsec validation
+		//
+		if BGPAttrType(data[1])  == BGP_ATTR_TYPE_MP_REACH_NLRI {
+			fmt.Printf("received MP NLRI: %#v\n", p)
+			prefix_addr = p.(*PathAttributeMpReachNLRI).Value[0].(*IPAddrPrefix).Prefix
+			prefix_len = p.(*PathAttributeMpReachNLRI).Value[0].(*IPAddrPrefix).Length
+			nlri_afi = p.(*PathAttributeMpReachNLRI).AFI
+			nlri_safi = p.(*PathAttributeMpReachNLRI).SAFI
+
+			fmt.Println("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
+			nlri_processed = true
+		}
+		
+		//
+		// BGPSec validation process
+		//
+		if BGPAttrType(data[1])  == BGP_ATTR_TYPE_BGPSEC && nlri_processed {
+			fmt.Printf("+++ bgpsec validation start \n")
+
+			var myas uint32 = uint32(gMyAs)
+			big2 := make([]byte, 4, 4)
+			for i := 0; i < 4; i++ {
+				u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&myas)) + uintptr(i)))
+				big2 = append(big2, u8)
+			}
+
+			valData := C.SCA_BGPSecValidationData{
+				myAS:             C.uint(binary.BigEndian.Uint32(big2[4:8])),
+				status:           C.sca_status_t(0),
+				bgpsec_path_attr: nil,
+				nlri:             nil,
+				hashMessage:      [2](*C.SCA_HashMessage){},
+			}
+
+			bs_path_attr := []byte{
+				0x90, 0x21, 0x00, 0x68, 0x00, 0x08, 0x01, 0x00, 0x00, 0x00, 0xfd, 0xf3,
+				0x00, 0x60, 0x01, 0x45, 0xca, 0xd0, 0xac, 0x44, 0xf7, 0x7e, 0xfa, 0xa9, 0x46, 0x02, 0xe9, 0x98,
+				0x43, 0x05, 0x21, 0x5b, 0xf4, 0x7d, 0xcd, 0x00, 0x47, 0x30, 0x45, 0x02, 0x21, 0x00, 0xb3, 0xe8,
+				0xcc, 0xd2, 0xcb, 0xba, 0x96, 0x47, 0xe3, 0x1f, 0x74, 0x97, 0xa3, 0x77, 0x74, 0x55, 0x86, 0x44,
+				0x09, 0x67, 0xec, 0x02, 0x60, 0x3f, 0x05, 0xe2, 0x1b, 0x47, 0x62, 0xab, 0xde, 0xd9, 0x02, 0x20,
+				0x05, 0x58, 0xe5, 0x72, 0xc5, 0x61, 0x91, 0x47, 0x99, 0x86, 0x16, 0x3e, 0x1e, 0x4a, 0x92, 0x5e,
+				0xe8, 0x26, 0x03, 0x1f, 0x5d, 0x5a, 0x36, 0x92, 0x18, 0x1e, 0x8b, 0x3e, 0xa7, 0x26, 0x4b, 0x61,
+			}
+
+			/* signature  buffer handling*/
+			bs_path_attr_length := 0x6c // 0x68 + 4
+			pa := C.malloc(C.ulong(bs_path_attr_length))
+			defer C.free(pa)
+
+			buf := &bytes.Buffer{}
+			bs_path_attr = data
+			binary.Write(buf, binary.BigEndian, bs_path_attr)
+			bl := buf.Len()
+			o := (*[1 << 20]C.uchar)(pa)
+
+			for i := 0; i < bl; i++ {
+				b, _ := buf.ReadByte()
+				o[i] = C.uchar(b)
+			}
+			valData.bgpsec_path_attr = (*C.uchar)(pa)
+
+			/* prefix handling */
+			prefix2 := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
+			defer C.free(unsafe.Pointer(prefix2))
+			px := &Go_SCA_Prefix{
+				afi:   nlri_afi,
+				safi:  nlri_safi,
+				length: prefix_len,
+				addr:   [16]byte{},
+			}
+			//pxip := net.IP{0x64, 0x0a, 0x0a, 0x00} // 100.10.10.0/24
+			pxip := prefix_addr 
+			copy(px.addr[:], pxip)
+			px.Pack(unsafe.Pointer(prefix2))
+			C.PrintSCA_Prefix(*prefix2)
+			fmt.Printf("prefix2 : %#v\n", prefix2)
+
+			valData.nlri = prefix2
+			fmt.Printf(" valData : %#v\n", valData)
+			fmt.Printf(" valData.bgpsec_path_attr : %#v\n", valData.bgpsec_path_attr)
+			C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
+			fmt.Printf(" valData.nlri : %#v\n", *valData.nlri)
+
+			// call validate
+			ret := C.validate(&valData)
+
+			fmt.Println("return: value:", ret, " and status: ", valData.status)
+			if ret == 1 {
+				fmt.Println(" +++ Validation function SUCCESS ...")
+
+			} else if ret == 0 {
+				fmt.Println(" Validation function Failed...")
+				switch valData.status {
+				case 1:
+					fmt.Println("Status Error: signature error")
+				case 2:
+					fmt.Println("Status Error: Key not found")
+				case 0x10000:
+					fmt.Println("Status Error: no data")
+				case 0x20000:
+					fmt.Println("Status Error: no prefix")
+				case 0x40000:
+					fmt.Println("Status Error: Invalid key")
+				case 0x10000000:
+					fmt.Println("Status Error: USER1")
+				case 0x20000000:
+					fmt.Println("Status Error: USER2")
+				}
+			}
+
+
+		} // end of if - bgpsec validation process
+
 		pathlen -= uint16(p.Len())
 		if len(data) < p.Len() {
 			return NewMessageError(eCode, BGP_ERROR_SUB_ATTRIBUTE_LENGTH_ERROR, data, "attribute length is short")
