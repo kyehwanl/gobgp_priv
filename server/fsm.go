@@ -1330,7 +1330,7 @@ func (h *FSMHandler) loop() error {
 		}).Info("Peer Down")
 	}
 
-	e := time.AfterFunc(time.Second*120, func() {
+	e := time.AfterFunc(time.Second*120000, func() {
 		log.WithFields(log.Fields{"Topic": "Peer"}).Fatalf("failed to free the fsm.h.t for %s %s %s", fsm.pConf.Config.NeighborAddress, oldState, nextState)
 	})
 	h.t.Wait()

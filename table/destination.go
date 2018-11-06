@@ -48,6 +48,7 @@ const (
 	BPR_ROUTER_ID          BestPathReason = "Router ID"
 	BPR_OLDER              BestPathReason = "Older"
 	BPR_NON_LLGR_STALE     BestPathReason = "no LLGR Stale"
+	BPR_RPKI_VALIDATION    BestPathReason = "RPKI validation result"
 )
 
 func IpToRadixkey(b []byte, max uint8) string {
@@ -524,6 +525,10 @@ func (p paths) Less(i, j int) bool {
 		reason = BPR_LOCAL_ORIGIN
 	}
 	if better == nil {
+		better = compareRpkiValidationResult(path1, path2)
+		reason = BPR_RPKI_VALIDATION
+	}
+	if better == nil {
 		better = compareByASPath(path1, path2)
 		reason = BPR_ASPATH
 	}
@@ -632,6 +637,27 @@ func compareByLocalPref(path1, path2 *Path) *Path {
 		return path1
 	} else if localPref1 < localPref2 {
 		return path2
+	} else {
+		return nil
+	}
+}
+
+func compareRpkiValidationResult(path1, path2 *Path) *Path {
+	log.WithFields(log.Fields{
+		"Topic": "Table",
+	}).Debug("enter compareRpkiValidationResult")
+	//map[RpkiValidationResultType]int
+	//var config.RpkiValidationResultTypeToIntMap
+	p1 := config.RpkiValidationResultTypeToIntMap[path1.Validation()]
+	p2 := config.RpkiValidationResultTypeToIntMap[path2.Validation()]
+
+	fmt.Printf("++ rpki p1: %d (%s)\n", p1, path1.Validation())
+	fmt.Printf("++ rpki p2: %d (%s)\n", p2, path2.Validation())
+
+	if p1 == config.RpkiValidationResultTypeToIntMap[config.RPKI_VALIDATION_RESULT_TYPE_INVALID] {
+		return path2
+	} else if p2 == config.RpkiValidationResultTypeToIntMap[config.RPKI_VALIDATION_RESULT_TYPE_INVALID] {
+		return path1
 	} else {
 		return nil
 	}
