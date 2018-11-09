@@ -33,6 +33,7 @@ import (
 var updateCount = 0
 var start time.Time
 var elapsed time.Time
+var gl_bgpsecManager *bgpsecManager
 
 type TCPListener struct {
 	l  *net.TCPListener
@@ -123,6 +124,7 @@ func NewBgpServer() *BgpServer {
 	}
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
+	gl_bgpsecManager = bgpsecManager
 	return s
 }
 
@@ -2499,12 +2501,13 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			sp = &bgp.SecurePath{
 				Length: 8,
 				SecurePathSegments: []bgp.SecurePathSegment{
-					{PCount: 1, Flags: 0, ASN: peer.Config.LocalAs},
+					{PCount: 0, Flags: 0, ASN: peer.Config.LocalAs},
 				},
 			}
 			sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
-			sp_value = append(sp_value, sp)
+			sp_value = append([]bgp.SecurePathInterface{sp}, sp_value...)
 			//pattr = append(pattr, bgp.NewPathAttributeBgpsec(value))
+			sp_value[0].(*bgp.SecurePath).Length = uint16(len(sp_value)*6 + 2)
 
 			var sb bgp.SignatureBlockInterface
 			sb = &bgp.SignatureBlock{
@@ -2541,7 +2544,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			}
 
 			fmt.Printf("++ prefix_addr: %#v \n", prefix_addr)
-			signature, sigLen := bc.GenerateSignature(60003)
+			signature, sigLen := bc.GenerateSignature(sp_value, gl_bgpsecManager)
 
 			fmt.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
 
@@ -2557,7 +2560,13 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			fmt.Println("test", prefix_addr, prefix_len, nlri_afi, nlri_safi)
 
 			sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
-			sb_value = append(sb_value, sb)
+			sb_value = append([]bgp.SignatureBlockInterface{sb}, sb_value...)
+
+			tot_sig_len := uint16(0)
+			for _, s := range sb_value {
+				tot_sig_len += s.(*bgp.SignatureBlock).SignatureSegments[0].Length + 20 + 2 // SKI(20)+siglen(2)
+			}
+			sb_value[0].(*bgp.SignatureBlock).Length = tot_sig_len + 2 + 1 // Sig block Len(2)+algoid(1)
 
 			fmt.Printf("++ sb_value: %#v\n\n", sb_value)
 

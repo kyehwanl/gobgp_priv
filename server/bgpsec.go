@@ -19,6 +19,7 @@ int init(const char* value, int debugLevel, sca_status_t* status);
 int sca_SetKeyPath (char* key_path);
 int _sign(SCA_BGPSecSignData* signData );
 int validate(SCA_BGPSecValidationData* data);
+int sca_generateHashMessage(SCA_BGPSecValidationData* data, u_int8_t algoID, sca_status_t* status);
 void printHex(int len, unsigned char* buff);
 */
 import "C"
@@ -97,12 +98,15 @@ type BgpsecCrypto struct {
 	Safi     uint8
 }
 
-func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
+func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgpsecManager) ([]byte, uint16) {
 
 	//
 	//  call _sign() function
 	//
 	fmt.Printf("+ bgpsec sign data testing...\n\n")
+	//sp := bpa.(*bgp.PathAttributeBgpsec).SecurePathValue.(*bgp.SecurePath)
+	sp_value := sp[0].(*bgp.SecurePath).SecurePathSegments[0]
+	fmt.Println("+++ secure path value:", sp_value)
 
 	// ------ prefix handling ---------------
 	ga := &Go_SCA_Prefix{
@@ -144,8 +148,8 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 
 	// ------ secure Path segment generation ---------------
 	u := &Go_SCA_BGPSEC_SecurePathSegment{
-		pCount: 1,
-		flags:  0x0,
+		pCount: sp_value.PCount,
+		flags:  sp_value.Flags,
 		asn:    bc.Peer_as,
 	}
 	sps := (*C.SCA_BGPSEC_SecurePathSegment)(C.malloc(C.sizeof_SCA_BGPSEC_SecurePathSegment))
@@ -157,7 +161,6 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	C.PrintPacked(*sps)
 
 	// ------ ski handling ---------------
-	//bs, _ := hex.DecodeString("45CAD0AC44F77EFAA94602E9984305215BF47DCD")
 	bs, _ := hex.DecodeString(bc.SKI_str)
 	fmt.Printf("type of bs: %T\n", bs)
 	fmt.Printf("string test: %02X \n", bs)
@@ -186,6 +189,9 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 	}
 	//bgpsecData.hashMessage = (*C.SCA_HashMessage)(hash)
 	//bgpsecData.hashMessage = nil
+	if bm.bgpsec_path_attr != nil {
+		fmt.Println("path attr:", bm.bgpsec_path_attr)
+	}
 
 	var peeras uint32 = bc.Local_as
 	big := make([]byte, 4, 4)
@@ -207,6 +213,28 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 		status:      C.sca_status_t(0),
 		hashMessage: nil,
 		signature:   nil,
+	}
+
+	if bm.bgpsec_path_attr != nil {
+		fmt.Println("path attr:", bm.bgpsec_path_attr)
+		fmt.Println("val data:", bm.bgpsecValData)
+
+		pa := C.malloc(C.ulong(bm.bgpsec_path_attr_length))
+		buf := &bytes.Buffer{}
+		bs_path_attr := bm.bgpsec_path_attr
+		binary.Write(buf, binary.BigEndian, bs_path_attr)
+		bl := buf.Len()
+		o := (*[1 << 20]C.uchar)(pa)
+
+		for i := 0; i < bl; i++ {
+			b, _ := buf.ReadByte()
+			o[i] = C.uchar(b)
+		}
+		bm.bgpsecValData.bgpsec_path_attr = (*C.uchar)(pa)
+
+		C.sca_generateHashMessage(&bm.bgpsecValData, C.SCA_ECDSA_ALGORITHM,
+			&bm.bgpsecValData.status)
+		bgpsecData.hashMessage = bm.bgpsecValData.hashMessage[0]
 	}
 
 	retVal := C._sign(&bgpsecData)
@@ -253,8 +281,11 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 type scaStatus uint32
 
 type bgpsecManager struct {
-	AS      uint32
-	KeyPath string
+	AS                      uint32
+	KeyPath                 string
+	bgpsec_path_attr        []byte
+	bgpsec_path_attr_length uint16
+	bgpsecValData           C.SCA_BGPSecValidationData
 }
 
 func (bm *bgpsecManager) BgpsecInit(key string) ([]byte, error) {
@@ -363,14 +394,28 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 					hashMessage:      [2](*C.SCA_HashMessage){},
 				}
 
+				var bs_path_attr_length uint16
+				Flags := bgp.BGPAttrFlag(data[0])
+				if Flags&bgp.BGP_ATTR_FLAG_EXTENDED_LENGTH != 0 {
+					bs_path_attr_length = binary.BigEndian.Uint16(data[2:4])
+				} else {
+
+					bs_path_attr_length = uint16(data[2])
+				}
+
+				bs_path_attr_length = bs_path_attr_length + 4 // flag(1) + length(1) + its own length octet (2)
+				data = data[:bs_path_attr_length]
 				// signature  buffer handling
 				//
-				bs_path_attr_length := 0x6c // 0x68 + 4
 				pa := C.malloc(C.ulong(bs_path_attr_length))
 				defer C.free(pa)
 
 				buf := &bytes.Buffer{}
 				bs_path_attr := data
+
+				bm.bgpsec_path_attr = data
+				bm.bgpsec_path_attr_length = bs_path_attr_length
+
 				binary.Write(buf, binary.BigEndian, bs_path_attr)
 				bl := buf.Len()
 				o := (*[1 << 20]C.uchar)(pa)
@@ -384,7 +429,7 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 				// prefix handling
 				//
 				prefix2 := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
-				defer C.free(unsafe.Pointer(prefix2))
+				//defer C.free(unsafe.Pointer(prefix2))
 				px := &Go_SCA_Prefix{
 					Afi:    nlri_afi,
 					Safi:   nlri_safi,
@@ -404,6 +449,7 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 				C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
 				fmt.Printf(" valData.nlri : %#v\n", *valData.nlri)
 
+				bm.bgpsecValData = valData
 				// call validate
 				ret := C.validate(&valData)
 
@@ -459,75 +505,11 @@ func (bm *bgpsecManager) SetKeyPath(keyPath string) error {
 
 func NewBgpsecManager(as uint32) (*bgpsecManager, error) {
 	m := &bgpsecManager{
-		AS: as,
+		AS:                      as,
+		bgpsec_path_attr:        make([]byte, 0),
+		bgpsec_path_attr_length: 0,
+		bgpsecValData:           C.SCA_BGPSecValidationData{},
 	}
 	//m.BgpsecInit(as)
 	return m, nil
 }
-
-/*
-typedef u_int32_t sca_status_t;
-
-typedef struct
-{
-  u_int8_t* signaturePtr;
-  u_int8_t* hashMessagePtr;
-  u_int16_t hashMessageLength;
-} SCA_HashMessagePtr;
-
-typedef struct
-{
-  bool      ownedByAPI;
-  u_int32_t bufferSize;
-  u_int8_t* buffer;
-  u_int16_t segmentCount;
-  SCA_HashMessagePtr** hashMessageValPtr;
-} SCA_HashMessage;
-
-
-typedef struct
-{
-  bool      ownedByAPI;
-  u_int8_t  algoID;
-  u_int8_t  ski[SKI_LENGTH];
-  u_int16_t sigLen;
-  u_int8_t* sigBuff;
-} SCA_Signature;
-
-
-typedef struct {
-  u_int8_t  pCount;
-  u_int8_t  flags;
-  u_int32_t asn;
-} __attribute__((packed)) SCA_BGPSEC_SecurePathSegment;
-
-
-typedef struct
-{
-  u_int16_t afi;
-  u_int8_t  safi;
-  u_int8_t  length;
-  union
-  {
-    struct in_addr  ipV4;
-    struct in6_addr ipV6;
-    u_int8_t ip[16];
-  } addr;
-} __attribute__((packed)) SCA_Prefix;
-
-
-typedef struct
-{
-  __attribute__((deprecated))u_int32_t peerAS;
-  __attribute__((deprecated))SCA_BGPSEC_SecurePathSegment* myHost;
-  __attribute__((deprecated))SCA_Prefix* nlri;
-
-  u_int32_t myASN;
-  u_int8_t* ski;
-  u_int8_t algorithmID;
-  sca_status_t status;
-  SCA_HashMessage*  hashMessage;
-
-  SCA_Signature* signature;
-} SCA_BGPSecSignData;
-*/

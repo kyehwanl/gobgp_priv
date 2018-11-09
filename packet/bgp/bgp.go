@@ -4419,18 +4419,24 @@ func (p *PathAttributeBgpsec) MarshalJSON() ([]byte, error) {
 
 func (p *PathAttributeBgpsec) Serialize() ([]byte, error) {
 	buf := make([]byte, 0)
-	for _, v := range p.SecurePathValue {
+	for i, v := range p.SecurePathValue {
 		vbuf, err := v.Serialize()
 		if err != nil {
 			return nil, err
 		}
+		if i >= 1 {
+			vbuf = vbuf[2:]
+		}
 		buf = append(buf, vbuf...)
 	}
 
-	for _, v := range p.SignatureBlockValue {
+	for i, v := range p.SignatureBlockValue {
 		vbuf, err := v.Serialize()
 		if err != nil {
 			return nil, err
+		}
+		if i >= 1 {
+			vbuf = vbuf[3:]
 		}
 		buf = append(buf, vbuf...)
 	}
