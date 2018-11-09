@@ -96,30 +96,30 @@ type BgpServer struct {
 	fsmStateCh    chan *FsmMsg
 	acceptCh      chan *net.TCPConn
 
-	mgmtCh      chan *mgmtOp
-	policy      *table.RoutingPolicy
-	listeners   []*TCPListener
-	neighborMap map[string]*Peer
-	globalRib   *table.TableManager
-	roaManager  *roaManager
-	shutdown    bool
-	watcherMap  map[WatchEventType][]*Watcher
-	zclient     *zebraClient
-	bmpManager  *bmpClientManager
-	mrtManager  *mrtManager
-	bgpsec      *bgpsecManager
+	mgmtCh        chan *mgmtOp
+	policy        *table.RoutingPolicy
+	listeners     []*TCPListener
+	neighborMap   map[string]*Peer
+	globalRib     *table.TableManager
+	roaManager    *roaManager
+	shutdown      bool
+	watcherMap    map[WatchEventType][]*Watcher
+	zclient       *zebraClient
+	bmpManager    *bmpClientManager
+	mrtManager    *mrtManager
+	bgpsecManager *bgpsecManager
 }
 
 func NewBgpServer() *BgpServer {
 	roaManager, _ := NewROAManager(0)
-	bgpsecManager, _ := NewBgpsecManager(1)
+	bgpsecManager, _ := NewBgpsecManager(0)
 	s := &BgpServer{
-		neighborMap: make(map[string]*Peer),
-		policy:      table.NewRoutingPolicy(),
-		roaManager:  roaManager,
-		bgpsec:      bgpsecManager,
-		mgmtCh:      make(chan *mgmtOp, 1),
-		watcherMap:  make(map[WatchEventType][]*Watcher),
+		neighborMap:   make(map[string]*Peer),
+		policy:        table.NewRoutingPolicy(),
+		roaManager:    roaManager,
+		bgpsecManager: bgpsecManager,
+		mgmtCh:        make(chan *mgmtOp, 1),
+		watcherMap:    make(map[WatchEventType][]*Watcher),
 	}
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
@@ -850,6 +850,9 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 			return
 		case *bgp.BGPMessage:
 			server.roaManager.validate(e.PathList)
+			if peer.fsm.pConf.Config.BgpsecEnable {
+				server.bgpsecManager.validate(e)
+			}
 
 			//var updateCount = 0
 			if updateCount == 0 {
@@ -1250,6 +1253,7 @@ func (s *BgpServer) Start(c *config.Global) error {
 		table.UseMultiplePaths = c.UseMultiplePaths.Config
 
 		s.roaManager.SetAS(s.bgpConfig.Global.Config.As)
+		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
 		return nil
 	}, false)
 }
