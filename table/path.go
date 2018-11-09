@@ -22,7 +22,6 @@ import (
 	"math"
 	"net"
 	"sort"
-	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -59,6 +58,7 @@ type originInfo struct {
 	timestamp          time.Time
 	noImplicitWithdraw bool
 	validation         config.RpkiValidationResultType
+	bgpsecValidation   config.RpkiValidationResultType
 	isFromExternal     bool
 	key                string
 	uuid               uuid.UUID
@@ -175,119 +175,6 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 				path.delPathAttr(a.GetType())
 			}
 		}
-	}
-
-	/* bgpsec path attr add */
-	if peer.Config.BgpsecEnable {
-
-		var prefix_addr net.IP
-		var prefix_len uint8
-		var nlri_afi uint16
-		var nlri_safi uint8
-
-		// TODO: [Done] find nlri attribute first and extract prefix info
-		for _, a := range path.GetPathAttrs() {
-			typ := a.GetType()
-			if typ == bgp.BGP_ATTR_TYPE_MP_REACH_NLRI {
-				fmt.Printf("MP NLRI: %#v\n", a)
-				prefix_addr = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
-				prefix_len = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
-				nlri_afi = a.(*bgp.PathAttributeMpReachNLRI).AFI
-				nlri_safi = a.(*bgp.PathAttributeMpReachNLRI).SAFI
-			}
-		}
-
-		for _, a := range path.GetPathAttrs() {
-			typ := a.GetType()
-			if typ == bgp.BGP_ATTR_TYPE_AS_PATH {
-				path.delPathAttr(typ)
-			}
-
-			if typ == bgp.BGP_ATTR_TYPE_BGPSEC {
-
-				fmt.Printf("HERE bgpsec again\n")
-
-				var sp bgp.SecurePathInterface
-				sp = &bgp.SecurePath{
-					Length: 8,
-					SecurePathSegments: []bgp.SecurePathSegment{
-						{PCount: 1, Flags: 0, ASN: peer.Config.LocalAs},
-					},
-				}
-				sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
-				sp_value = append(sp_value, sp)
-				//pattr = append(pattr, bgp.NewPathAttributeBgpsec(value))
-
-				var sb bgp.SignatureBlockInterface
-				sb = &bgp.SignatureBlock{
-					Length: 95,
-					AID:    1,
-					SignatureSegments: []bgp.SignatureSegment{
-						{
-							SKI:       [20]uint8{0},
-							Length:    0,
-							Signature: nil,
-						},
-					},
-				}
-
-				ski_value := &sb.(*bgp.SignatureBlock).SignatureSegments[0].SKI
-				ski := peer.Config.Ski
-				for i, _ := range ski {
-					if i > 19 {
-						break
-					}
-					n, _ := strconv.ParseUint(ski[2*i:2*i+2], 16, 8) // base:16, upto 8 bit
-					ski_value[i] = uint8(n)
-					//fmt.Printf("%d - %x ", i, uint8(n))
-				}
-
-				bc := &bgp.BgpsecCrypto{
-					Peer_as:  peer.Config.LocalAs,
-					Local_as: peer.Config.PeerAs,
-					SKI_str:  peer.Config.Ski,
-					PxAddr:   prefix_addr,
-					PxLen:    prefix_len,
-					Afi:      nlri_afi,
-					Safi:     nlri_safi,
-				}
-
-				fmt.Printf("++ prefix_addr: %#v \n", prefix_addr)
-				signature, sigLen := bc.GenerateSignature(60003)
-
-				fmt.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
-
-				//sig_value := sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature
-				//sig_value = append(sig_value[:], []uint8(signature))
-				//fmt.Printf("++ sig value : %#v\n\n", sig_value)
-				//fmt.Printf("++ SignatureSegment:signature : %#v\n\n", sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature)
-
-				sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature = signature
-				sb.(*bgp.SignatureBlock).SignatureSegments[0].Length = sigLen
-				sb.(*bgp.SignatureBlock).Length = sigLen + 20 + 2 + 1 + 2
-				fmt.Printf("++ sb Length: %d\n", sb.(*bgp.SignatureBlock).Length)
-
-				sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
-				sb_value = append(sb_value, sb)
-
-				fmt.Printf("++ sb_value: %#v\n\n", sb_value)
-
-				path.setPathAttr(bgp.NewPathAttributeBgpsec(sp_value, sb_value))
-				//pattr = append(pattr, bgp.NewPathAttributeBgpsec(sp_value, sb_value))
-
-			}
-		}
-		/* TODO: for bgpsec, remove nlri */
-		/*
-			p := path
-			if p.info == nil {
-				p = p.parent
-			}
-			if p.info != nil {
-				p.info.nlri = nil
-			}
-		*/
-
 	}
 
 	localAddress := net.ParseIP(peer.Transport.State.LocalAddress)
@@ -424,6 +311,10 @@ func (path *Path) Validation() config.RpkiValidationResultType {
 
 func (path *Path) SetValidation(r config.RpkiValidationResultType) {
 	path.OriginInfo().validation = r
+}
+
+func (path *Path) SetBgpsecValidation(r config.RpkiValidationResultType) {
+	path.OriginInfo().bgpsecValidation = r
 }
 
 func (path *Path) IsFromExternal() bool {
@@ -617,12 +508,20 @@ func (path *Path) setPathAttr(a bgp.PathAttributeInterface) {
 	}
 }
 
+func (path *Path) SetPathAttr(a bgp.PathAttributeInterface) {
+	path.setPathAttr(a)
+}
+
 func (path *Path) delPathAttr(typ bgp.BGPAttrType) {
 	if len(path.dels) == 0 {
 		path.dels = []bgp.BGPAttrType{typ}
 	} else {
 		path.dels = append(path.dels, typ)
 	}
+}
+
+func (path *Path) DelPathAttr(typ bgp.BGPAttrType) {
+	path.delPathAttr(typ)
 }
 
 // return Path's string representation
