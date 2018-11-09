@@ -3635,6 +3635,8 @@ type GlobalConfig struct {
 	Port int32 `mapstructure:"port" json:"port,omitempty"`
 	// original -> gobgp:local-address
 	LocalAddressList []string `mapstructure:"local-address-list" json:"local-address-list,omitempty"`
+
+	KeyPath string `mapstructure:"key-path" json:"key-path,omitempty"`
 }
 
 func (lhs *GlobalConfig) Equal(rhs *GlobalConfig) bool {

@@ -1254,6 +1254,8 @@ func (s *BgpServer) Start(c *config.Global) error {
 
 		s.roaManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
+		s.bgpsecManager.SetKeyPath(s.bgpConfig.Global.Config.KeyPath)
+		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)
 		return nil
 	}, false)
 }

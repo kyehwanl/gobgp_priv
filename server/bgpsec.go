@@ -253,16 +253,17 @@ func (bc *BgpsecCrypto) GenerateSignature(as uint32) ([]byte, uint16) {
 type scaStatus uint32
 
 type bgpsecManager struct {
-	AS uint32
+	AS      uint32
+	KeyPath string
 }
 
-func (bm *bgpsecManager) BgpsecInit(as uint32) ([]byte, error) {
+func (bm *bgpsecManager) BgpsecInit(key string) ([]byte, error) {
 
 	// --------- call sca_SetKeyPath -----------------------
 	fmt.Printf("+ setKey path call testing...\n\n")
 	//sca_SetKeyPath needed in libSRxCryptoAPI.so
 
-	keyPath := C.CString("/opt/project/srx_test1/keys/")
+	keyPath := C.CString(key)
 	keyRet := C.sca_SetKeyPath(keyPath)
 	fmt.Println("sca_SetKeyPath() return:", keyRet)
 	if keyRet != 1 {
@@ -272,8 +273,7 @@ func (bm *bgpsecManager) BgpsecInit(as uint32) ([]byte, error) {
 	// --------- call Init() function ---------------------
 	fmt.Printf("+ Init call testing...\n\n")
 
-	//str := C.CString("PRIV:/opt/project/srx_test1/keys/priv-ski-list.txt")
-	str := C.CString("PUB:/opt/project/srx_test1/keys/ski-list.txt;PRIV:/opt/project/srx_test1/keys/priv-ski-list.txt")
+	str := C.CString("PUB:" + key + "/ski-list.txt;PRIV:" + key + "/priv-ski-list.txt")
 	fmt.Printf("+ str: %s\n", C.GoString(str))
 
 	var stat *scaStatus
@@ -451,11 +451,17 @@ func (bm *bgpsecManager) SetAS(as uint32) error {
 	return nil
 }
 
+func (bm *bgpsecManager) SetKeyPath(keyPath string) error {
+	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("key path set: %s", keyPath)
+	bm.KeyPath = keyPath
+	return nil
+}
+
 func NewBgpsecManager(as uint32) (*bgpsecManager, error) {
 	m := &bgpsecManager{
 		AS: as,
 	}
-	m.BgpsecInit(as)
+	//m.BgpsecInit(as)
 	return m, nil
 }
 
