@@ -2497,18 +2497,30 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 
 			fmt.Printf("HERE bgpsec again\n")
 
+			sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
 			var sp bgp.SecurePathInterface
 			sp = &bgp.SecurePath{
 				Length: 8,
 				SecurePathSegments: []bgp.SecurePathSegment{
 					{PCount: 0, Flags: 0, ASN: peer.Config.LocalAs},
-				},
-			}
-			sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
-			sp_value = append([]bgp.SecurePathInterface{sp}, sp_value...)
-			//pattr = append(pattr, bgp.NewPathAttributeBgpsec(value))
-			sp_value[0].(*bgp.SecurePath).Length = uint16(len(sp_value)*6 + 2)
+				}}
+			var new_sps bgp.SecurePathSegment = bgp.SecurePathSegment{
+				PCount: 0, Flags: 0, ASN: peer.Config.LocalAs}
 
+			// whether already exist path
+			if sp_value != nil {
+				sps := sp_value[0].(*bgp.SecurePath).SecurePathSegments
+				sps = append([]bgp.SecurePathSegment{new_sps}, sps...)
+				sp_value[0].(*bgp.SecurePath).Length = uint16(len(sps)*6 + 2)
+				sp_value[0].(*bgp.SecurePath).SecurePathSegments = sps
+
+			} else {
+				sp_value = append([]bgp.SecurePathInterface{sp}, sp_value...)
+				sp_value[0].(*bgp.SecurePath).Length = uint16(len(sp_value)*6 + 2)
+			}
+
+			// Signature Block handling
+			//
 			var sb bgp.SignatureBlockInterface
 			sb = &bgp.SignatureBlock{
 				Length: 95,
@@ -2521,8 +2533,15 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 					},
 				},
 			}
+			var new_ss bgp.SignatureSegment = bgp.SignatureSegment{
+				Length:    0,
+				Signature: nil,
+				SKI:       [20]uint8{0},
+			}
 
 			ski_value := &sb.(*bgp.SignatureBlock).SignatureSegments[0].SKI
+			ski_value2 := &new_ss.SKI
+
 			ski := peer.Config.Ski
 			for i, _ := range ski {
 				if i > 19 {
@@ -2530,6 +2549,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 				}
 				n, _ := strconv.ParseUint(ski[2*i:2*i+2], 16, 8) // base:16, upto 8 bit
 				ski_value[i] = uint8(n)
+				ski_value2[i] = uint8(n)
 				//fmt.Printf("%d - %x ", i, uint8(n))
 			}
 
@@ -2559,14 +2579,28 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			fmt.Printf("++ sb Length: %d\n", sb.(*bgp.SignatureBlock).Length)
 			fmt.Println("test", prefix_addr, prefix_len, nlri_afi, nlri_safi)
 
-			sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
-			sb_value = append([]bgp.SignatureBlockInterface{sb}, sb_value...)
+			new_ss.Signature = signature
+			new_ss.Length = sigLen
 
-			tot_sig_len := uint16(0)
-			for _, s := range sb_value {
-				tot_sig_len += s.(*bgp.SignatureBlock).SignatureSegments[0].Length + 20 + 2 // SKI(20)+siglen(2)
+			sb_value := a.(*bgp.PathAttributeBgpsec).SignatureBlockValue
+
+			if sp_value != nil && sb_value != nil {
+				ss := sb_value[0].(*bgp.SignatureBlock).SignatureSegments
+				ss = append([]bgp.SignatureSegment{new_ss}, ss...)
+
+				var tot uint16
+				for i := 0; i < len(ss); i++ {
+					tot += ss[i].Length + 20 + 2 // SKI(20)+siglen(2)
+				}
+				tot += 2 + 1 // Sig block Len(2)+algoid(1)
+				sb_value[0].(*bgp.SignatureBlock).Length = tot
+				sb_value[0].(*bgp.SignatureBlock).SignatureSegments = ss
+
+			} else {
+				sb_value = append([]bgp.SignatureBlockInterface{sb}, sb_value...)
+				tot_sig_len := sb_value[0].(*bgp.SignatureBlock).SignatureSegments[0].Length + 20 + 2 // SKI(20)+siglen(2)
+				sb_value[0].(*bgp.SignatureBlock).Length = tot_sig_len + 2 + 1                        // Sig block Len(2)+algoid(1)
 			}
-			sb_value[0].(*bgp.SignatureBlock).Length = tot_sig_len + 2 + 1 // Sig block Len(2)+algoid(1)
 
 			fmt.Printf("++ sb_value: %#v\n\n", sb_value)
 

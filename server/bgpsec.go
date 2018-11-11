@@ -104,8 +104,10 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	//  call _sign() function
 	//
 	fmt.Printf("+ bgpsec sign data testing...\n\n")
+	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("bgpsec sign: Generate Signature\n")
 	//sp := bpa.(*bgp.PathAttributeBgpsec).SecurePathValue.(*bgp.SecurePath)
 	sp_value := sp[0].(*bgp.SecurePath).SecurePathSegments[0]
+	sp_len := len(sp[0].(*bgp.SecurePath).SecurePathSegments)
 	fmt.Println("+++ secure path value:", sp_value)
 
 	// ------ prefix handling ---------------
@@ -215,7 +217,9 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 		signature:   nil,
 	}
 
-	if bm.bgpsec_path_attr != nil {
+	// if more than 2 hops bgpsec verify
+	if sp_len > 1 && bm.bgpsec_path_attr != nil {
+		log.WithFields(log.Fields{"Topic": "bgpsec"}).Info("more than 2 hops verification")
 		fmt.Println("path attr:", bm.bgpsec_path_attr)
 		fmt.Println("val data:", bm.bgpsecValData)
 
@@ -232,6 +236,7 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 		}
 		bm.bgpsecValData.bgpsec_path_attr = (*C.uchar)(pa)
 
+		// call hash generation function in crypto library
 		C.sca_generateHashMessage(&bm.bgpsecValData, C.SCA_ECDSA_ALGORITHM,
 			&bm.bgpsecValData.status)
 		bgpsecData.hashMessage = bm.bgpsecValData.hashMessage[0]

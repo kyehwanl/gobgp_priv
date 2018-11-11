@@ -4553,7 +4553,7 @@ func (sp *SecurePath) DecodeFromBytes(data []byte) error {
 		sps[i].PCount = uint8(data[i*6+0])
 		sps[i].Flags = uint8(data[i*6+1])
 		sps[i].ASN = binary.BigEndian.Uint32(data[i*6+2 : i*6+6])
-		data = data[i*6+6:]
+		//data = data[i*6+6:]
 	}
 
 	sp.SecurePathSegments = sps
@@ -4562,16 +4562,19 @@ func (sp *SecurePath) DecodeFromBytes(data []byte) error {
 }
 
 func (sp *SecurePath) Serialize() ([]byte, error) {
-	buf := make([]byte, 2+(1+1+4)) // SecurePath Length:2  pCount:1 Flags:1 ASN:4
+	//buf := make([]byte, 2+(1+1+4), sp.Length) // SecurePath Length:2  pCount:1 Flags:1 ASN:4
+	buf := make([]byte, sp.Length) // SecurePath Length:2  pCount:1 Flags:1 ASN:4
 
 	binary.BigEndian.PutUint16(buf[0:2], sp.Length)
+	//buf = buf[2:]
 
 	for i, segment := range sp.SecurePathSegments {
 		v, err := segment.Serialize()
 		if err != nil {
 			return nil, err
 		}
-		copy(buf[2+i*6:], v)
+		copy(buf[i*6+2:], v)
+		//buf = buf[6:]
 	}
 
 	return buf, nil
@@ -4650,15 +4653,27 @@ func (sb *SignatureBlock) DecodeFromBytes(data []byte) error {
 	eCode := uint8(BGP_ERROR_UPDATE_MESSAGE_ERROR)
 	eSubCode := uint8(BGP_ERROR_SUB_OPTIONAL_ATTRIBUTE_ERROR)
 	if len(data) < (20 + 2 + 1 + 70) {
-		return NewMessageError(eCode, eSubCode, nil, "SecurePath param length is short")
+		return NewMessageError(eCode, eSubCode, nil, "Signature param length is short")
 	}
 	sb.Length = binary.BigEndian.Uint16(data[0:2])
 	sb.AID = data[2]
 	data = data[3:]
 
+	var size uint16 = uint16(sb.Length - 3)
+	numberSs := 0
+	ss := data
+	for size > 0 {
+		size -= 20 // ski octet length
+		sig_len := binary.BigEndian.Uint16(ss[20:22])
+		size -= sig_len // signature length
+		size -= 2       // sig length
+		ss = ss[22+sig_len:]
+		numberSs++
+	}
+
 	// TODO: here, 70 means least number of signature length,
 	// Later should be fixed or modified with more appropriate way
-	numberSs := sb.Length / (70 + 20 + 2 + 1 + 2)
+	//numberSs := sb.Length / (70 + 20 + 2)
 	sigseg := make([]SignatureSegment, numberSs)
 
 	var totSigLen uint16

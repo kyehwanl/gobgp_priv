@@ -572,7 +572,7 @@ func (s *Server) api2PathList(resource Resource, ApiPathList []*Path) ([]*table.
 		}
 
 		if bgpsec_flag {
-			fmt.Printf("+++ [grpc_server:api2PathList] bgpsec enabled")
+			fmt.Println("+++ [grpc_server:api2PathList] bgpsec enabled")
 		}
 
 		if resource != Resource_VRF && bgp.RouteFamily(path.Family) == bgp.RF_IPv4_UC && !bgpsec_flag {
