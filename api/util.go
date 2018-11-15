@@ -115,6 +115,7 @@ func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
 	t := time.Unix(p.Age, 0)
 	path := table.NewPath(info, nlri, p.IsWithdraw, pattr, t, false)
 	path.SetValidation(config.IntToRpkiValidationResultTypeMap[int(p.Validation)])
+	path.SetBgpsecValidation(config.IntToRpkiValidationResultTypeMap[int(p.BgpsecValidation)])
 	path.MarkStale(p.Stale)
 	path.SetUUID(p.Uuid)
 	if p.Filtered {

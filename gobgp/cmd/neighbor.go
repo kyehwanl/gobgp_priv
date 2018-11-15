@@ -381,6 +381,14 @@ func ShowRoute(pathList []*table.Path, showAge, showBest, showLabel, isMonitor, 
 		case config.RPKI_VALIDATION_RESULT_TYPE_INVALID:
 			best += "I"
 		}
+		switch p.BgpsecValidation() {
+		case config.RPKI_VALIDATION_RESULT_TYPE_NOT_FOUND:
+			best += ",N"
+		case config.RPKI_VALIDATION_RESULT_TYPE_VALID:
+			best += ",V"
+		case config.RPKI_VALIDATION_RESULT_TYPE_INVALID:
+			best += ",I"
+		}
 		if showBest {
 			if idx == 0 && !p.IsNexthopInvalid {
 				best += "*>"

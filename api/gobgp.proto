@@ -518,6 +518,7 @@ message Path {
   string neighbor_ip = 14;
   bytes uuid = 15; // only paths installed by AddPath API have this
   bool is_nexthop_invalid = 16;
+  int32 bgpsec_validation = 17;
 }
 
 message Destination {
