@@ -1705,6 +1705,37 @@ func NewRpkiValidationCondition(c config.RpkiValidationResultType) (*RpkiValidat
 	}, nil
 }
 
+type BgpsecValidationCondition struct {
+	result config.RpkiValidationResultType
+}
+
+func (c *BgpsecValidationCondition) Type() ConditionType {
+	return CONDITION_RPKI
+}
+
+func (c *BgpsecValidationCondition) Evaluate(path *Path, _ *PolicyOptions) bool {
+	return c.result == path.BgpsecValidation()
+}
+
+func (c *BgpsecValidationCondition) Set() DefinedSet {
+	return nil
+}
+
+func (c *BgpsecValidationCondition) Name() string { return "" }
+
+func (c *BgpsecValidationCondition) String() string {
+	return string(c.result)
+}
+
+func NewBgpsecValidationCondition(c config.RpkiValidationResultType) (*BgpsecValidationCondition, error) {
+	if c == config.RpkiValidationResultType("") || c == config.RPKI_VALIDATION_RESULT_TYPE_NONE {
+		return nil, nil
+	}
+	return &BgpsecValidationCondition{
+		result: c,
+	}, nil
+}
+
 type RouteTypeCondition struct {
 	typ config.RouteType
 }
@@ -2622,6 +2653,9 @@ func NewStatement(c config.Statement) (*Statement, error) {
 		},
 		func() (Condition, error) {
 			return NewRpkiValidationCondition(c.Conditions.BgpConditions.RpkiValidationResult)
+		},
+		func() (Condition, error) {
+			return NewBgpsecValidationCondition(c.Conditions.BgpConditions.BgpsecValidationResult)
 		},
 		func() (Condition, error) {
 			return NewRouteTypeCondition(c.Conditions.BgpConditions.RouteType)

@@ -277,6 +277,7 @@ func createUpdateMsgFromPath(path *Path, msg *bgp.BGPMessage) *bgp.BGPMessage {
 			} else {
 				pathAttrs := path.GetPathAttrs()
 
+				// remove NLRI if BGPSec update
 				for _, a := range path.pathAttrs {
 					if typ := a.GetType(); typ == bgp.BGP_ATTR_TYPE_BGPSEC {
 						bgpsec_flag = true
@@ -373,6 +374,9 @@ func CreateUpdateMsgFromPaths(pathList []*Path) []*bgp.BGPMessage {
 				h := fnv.New32()
 				total := bytes.NewBuffer(make([]byte, 0))
 				for _, v := range p.GetPathAttrs() {
+					//if p.BgpsecEnable == true && v.GetType() == bgp.BGP_ATTR_TYPE_AS_PATH {
+					//continue
+					//}
 					b, _ := v.Serialize()
 					total.Write(b)
 				}

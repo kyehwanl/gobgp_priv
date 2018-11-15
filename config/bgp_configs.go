@@ -4253,6 +4253,8 @@ type BgpConditions struct {
 	RouteType RouteType `mapstructure:"route-type" json:"route-type,omitempty"`
 	// original -> gobgp:rpki-validation-result
 	RpkiValidationResult RpkiValidationResultType `mapstructure:"rpki-validation-result" json:"rpki-validation-result,omitempty"`
+	//
+	BgpsecValidationResult RpkiValidationResultType `mapstructure:"bgpsec-validation-result" json:"bgpsec-validation-result,omitempty"`
 	// original -> gobgp:match-large-community-set
 	MatchLargeCommunitySet MatchLargeCommunitySet `mapstructure:"match-large-community-set" json:"match-large-community-set,omitempty"`
 }

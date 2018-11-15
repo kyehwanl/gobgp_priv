@@ -2494,9 +2494,9 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 		}
 
 		if typ == bgp.BGP_ATTR_TYPE_BGPSEC {
-
 			fmt.Printf("HERE bgpsec again\n")
 
+			path.BgpsecEnable = true // in case, if cloned path doesn't reflect the parent bgpsecEnable attribute
 			sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
 			var sp bgp.SecurePathInterface
 			sp = &bgp.SecurePath{

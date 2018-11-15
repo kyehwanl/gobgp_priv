@@ -91,6 +91,7 @@ type Path struct {
 	VrfIds     []uint16
 	// For BGP Nexthop Tracking, this field shows if nexthop is invalidated by IGP.
 	IsNexthopInvalid bool
+	BgpsecEnable     bool
 }
 
 func NewPath(source *PeerInfo, nlri bgp.AddrPrefixInterface, isWithdraw bool, pattrs []bgp.PathAttributeInterface, timestamp time.Time, noImplicitWithdraw bool) *Path {
@@ -189,10 +190,7 @@ func (path *Path) UpdatePathAttrs(global *config.Global, peer *config.Neighbor) 
 		}
 
 		// AS_PATH handling
-		// TODO: in case of bgpsec enabled, need to eliminate commented-out below
-		if !peer.Config.BgpsecEnable {
-			path.PrependAsn(peer.Config.LocalAs, 1)
-		}
+		path.PrependAsn(peer.Config.LocalAs, 1)
 
 		// MED Handling
 		if med := path.getPathAttr(bgp.BGP_ATTR_TYPE_MULTI_EXIT_DISC); med != nil && !path.IsLocal() {
@@ -307,6 +305,10 @@ func (path *Path) NoImplicitWithdraw() bool {
 
 func (path *Path) Validation() config.RpkiValidationResultType {
 	return path.OriginInfo().validation
+}
+
+func (path *Path) BgpsecValidation() config.RpkiValidationResultType {
+	return path.OriginInfo().bgpsecValidation
 }
 
 func (path *Path) SetValidation(r config.RpkiValidationResultType) {

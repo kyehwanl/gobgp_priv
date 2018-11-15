@@ -681,6 +681,12 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 							if path.IsEOR() {
 								continue
 							}
+							for _, pa := range path.GetPathAttrs() {
+								typ := uint(pa.GetType())
+								if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) {
+									path.BgpsecEnable = true
+								}
+							}
 							if h.fsm.policy.ApplyPolicy(id, table.POLICY_DIRECTION_IN, path, nil) == nil {
 								path.Filter(id, table.POLICY_DIRECTION_IN)
 							}
