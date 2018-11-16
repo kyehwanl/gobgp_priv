@@ -671,6 +671,13 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 					}).Warn("malformed BGP update message")
 					fmsg.MsgData = err
 				} else {
+					// if bgpsec udpate, need to extract AS_PATH info into a path attribute
+					var newAsPath bgp.PathAttributeInterface
+					if bgp.IsBgpsecInMsg(body) {
+						newAsPath = bgp.ExtractAsPathAttrFromBgpsecUpdate(body)
+						fmt.Println("newAsPaths from BGPSec update", newAsPath)
+					}
+
 					// FIXME: we should use the original message for bmp/mrt
 					table.UpdatePathAttrs4ByteAs(body)
 					err = table.UpdatePathAggregator4ByteAs(body)
@@ -685,6 +692,9 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 								typ := uint(pa.GetType())
 								if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) {
 									path.BgpsecEnable = true
+									if newAsPath != nil {
+										path.SetPathAttr(newAsPath)
+									}
 								}
 							}
 							if h.fsm.policy.ApplyPolicy(id, table.POLICY_DIRECTION_IN, path, nil) == nil {

@@ -4379,6 +4379,9 @@ func NewPathAttributeOrigin(value uint8) *PathAttributeOrigin {
 
 /* Bgpsec declaration */
 //---------------------------------------------
+const (
+	BGPSEC_SECURE_PATH_LENGTH = 6
+)
 
 type SecurePathInterface interface {
 	DecodeFromBytes([]byte) error
@@ -8118,4 +8121,46 @@ func FlatUpdate(f1, f2 map[string]string) error {
 	} else {
 		return nil
 	}
+}
+
+func ExtractAsPathAttrFromBgpsecUpdate(msg *BGPUpdate) PathAttributeInterface {
+	var pb *PathAttributeBgpsec
+	var newAttr PathAttributeInterface
+
+	for _, attr := range msg.PathAttributes {
+		switch attr.(type) {
+		case *PathAttributeBgpsec:
+			pb = attr.(*PathAttributeBgpsec)
+
+			for _, sp := range pb.SecurePathValue {
+
+				switch sp.(type) {
+				case *SecurePath:
+					s := sp.(*SecurePath)
+
+					l := (s.Length - 2) / BGPSEC_SECURE_PATH_LENGTH
+					//asPaths := make([]PathAttributeAsPath, 0, l)
+					ases := make([]uint32, 0, l)
+					for _, ss := range s.SecurePathSegments {
+						ases = append(ases, uint32(ss.ASN))
+					}
+					asPath := []AsPathParamInterface{
+						NewAs4PathParam(BGP_ASPATH_ATTR_TYPE_SEQ, ases)}
+					newAttr = NewPathAttributeAsPath(asPath)
+				}
+			}
+			return newAttr
+		}
+	}
+	return nil
+}
+
+func IsBgpsecInMsg(msg *BGPUpdate) bool {
+	for _, attr := range msg.PathAttributes {
+		switch attr.(type) {
+		case *PathAttributeBgpsec:
+			return true
+		}
+	}
+	return false
 }
