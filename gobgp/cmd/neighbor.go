@@ -380,6 +380,8 @@ func ShowRoute(pathList []*table.Path, showAge, showBest, showLabel, isMonitor, 
 			best += "V"
 		case config.RPKI_VALIDATION_RESULT_TYPE_INVALID:
 			best += "I"
+		case config.RPKI_VALIDATION_RESULT_TYPE_NONE:
+			best += "_"
 		}
 		switch p.BgpsecValidation() {
 		case config.RPKI_VALIDATION_RESULT_TYPE_NOT_FOUND:
@@ -388,6 +390,8 @@ func ShowRoute(pathList []*table.Path, showAge, showBest, showLabel, isMonitor, 
 			best += ",V"
 		case config.RPKI_VALIDATION_RESULT_TYPE_INVALID:
 			best += ",I"
+		case config.RPKI_VALIDATION_RESULT_TYPE_NONE:
+			best += ",_"
 		}
 		if showBest {
 			if idx == 0 && !p.IsNexthopInvalid {
@@ -439,7 +443,7 @@ func ShowRoute(pathList []*table.Path, showAge, showBest, showLabel, isMonitor, 
 	if isMonitor {
 		format = "[%s] %s via %s aspath [%s] attrs %s\n"
 	} else {
-		format = fmt.Sprintf("%%-3s %%-%ds", maxPrefixLen)
+		format = fmt.Sprintf("%%-6s %%-%ds", maxPrefixLen)
 		if showLabel {
 			format += fmt.Sprintf("%%-%ds ", maxLabelLen)
 		}
