@@ -2475,7 +2475,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 	var nlri_afi uint16
 	var nlri_safi uint8
 
-	// TODO: [Done] find nlri attribute first and extract prefix info
+	// find nlri or as_path attributes first and extract prefix info or process the as path ignored
 	for _, a := range path.GetPathAttrs() {
 		typ := a.GetType()
 		if typ == bgp.BGP_ATTR_TYPE_MP_REACH_NLRI {
@@ -2485,16 +2485,20 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			nlri_afi = a.(*bgp.PathAttributeMpReachNLRI).AFI
 			nlri_safi = a.(*bgp.PathAttributeMpReachNLRI).SAFI
 		}
+
+		if typ == bgp.BGP_ATTR_TYPE_AS_PATH {
+			path.DelPathAttr(typ)
+		}
 	}
 
 	for _, a := range path.GetPathAttrs() {
 		typ := a.GetType()
-		if typ == bgp.BGP_ATTR_TYPE_AS_PATH {
-			path.DelPathAttr(typ)
-		}
 
 		if typ == bgp.BGP_ATTR_TYPE_BGPSEC {
 			fmt.Printf("HERE bgpsec again\n")
+			log.WithFields(log.Fields{
+				"Topic": "bgpsec",
+			}).Info("Func: UpdateBgpsecPathAttr")
 
 			path.BgpsecEnable = true // in case, if cloned path doesn't reflect the parent bgpsecEnable attribute
 			sp_value := a.(*bgp.PathAttributeBgpsec).SecurePathValue
@@ -2510,6 +2514,13 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			// whether already exist path
 			if sp_value != nil {
 				sps := sp_value[0].(*bgp.SecurePath).SecurePathSegments
+				if sps[0].ASN == peer.Config.LocalAs {
+					// ignore, already Secure Path was made at past
+					log.WithFields(log.Fields{
+						"Topic": "bgpsec",
+					}).Info("already Secure Path was made at past, ignore")
+					return
+				}
 				sps = append([]bgp.SecurePathSegment{new_sps}, sps...)
 				sp_value[0].(*bgp.SecurePath).Length = uint16(len(sps)*6 + 2)
 				sp_value[0].(*bgp.SecurePath).SecurePathSegments = sps
