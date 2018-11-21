@@ -279,7 +279,8 @@ func createUpdateMsgFromPath(path *Path, msg *bgp.BGPMessage) *bgp.BGPMessage {
 
 				// remove NLRI if BGPSec update
 				for _, a := range pathAttrs {
-					if typ := a.GetType(); typ == bgp.BGP_ATTR_TYPE_BGPSEC {
+					if typ := a.GetType(); typ == bgp.BGP_ATTR_TYPE_BGPSEC && path.BgpsecEnable &&
+						path.IsBgpsecAttrInDels() == false {
 						bgpsec_flag = true
 					}
 				}

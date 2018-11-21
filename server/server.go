@@ -666,6 +666,9 @@ func (server *BgpServer) propagateUpdate(peer *Peer, pathList []*table.Path) {
 			continue
 		}
 		if paths := targetPeer.processOutgoingPaths(best[targetPeer.TableID()], old[targetPeer.TableID()]); len(paths) > 0 {
+			for _, path := range paths {
+				path.BgpsecAttributeProcess(targetPeer.fsm.pConf.Config)
+			}
 			sendFsmOutgoingMsg(targetPeer, paths, nil, false)
 		}
 	}
@@ -802,6 +805,9 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 				}
 
 				if len(pathList) > 0 {
+					for _, path := range pathList {
+						path.BgpsecAttributeProcess(peer.fsm.pConf.Config)
+					}
 					sendFsmOutgoingMsg(peer, pathList, nil, false)
 				}
 			} else {
