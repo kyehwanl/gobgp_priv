@@ -17,7 +17,7 @@ void PrintSCA_Prefix(SCA_Prefix p){
 
 int init(const char* value, int debugLevel, sca_status_t* status);
 int sca_SetKeyPath (char* key_path);
-int _sign(SCA_BGPSecSignData* signData );
+int sign(int count, SCA_BGPSecSignData** bgpsec_data);
 int validate(SCA_BGPSecValidationData* data);
 int sca_generateHashMessage(SCA_BGPSecValidationData* data, u_int8_t algoID, sca_status_t* status);
 void printHex(int len, unsigned char* buff);
@@ -101,7 +101,7 @@ type BgpsecCrypto struct {
 func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgpsecManager) ([]byte, uint16) {
 
 	//
-	//  call _sign() function
+	//  call sign() function
 	//
 	fmt.Printf("+ bgpsec sign data testing...\n\n")
 	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("bgpsec sign: Generate Signature\n")
@@ -242,11 +242,16 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 		bgpsecData.hashMessage = bm.bgpsecValData.hashMessage[0]
 	}
 
-	retVal := C._sign(&bgpsecData)
+	arrBgpsecData := (**C.SCA_BGPSecSignData)(C.malloc(C.size_t(unsafe.Sizeof(bgpsecData))))
+	defer C.free(unsafe.Pointer(arrBgpsecData))
+	*(**C.SCA_BGPSecSignData)(arrBgpsecData) = &bgpsecData
+
+	//retVal := C._sign(&bgpsecData)
+	retVal := C.sign(1, arrBgpsecData)
 
 	fmt.Println("return: value:", retVal, " and status: ", bgpsecData.status)
 	if retVal == 1 {
-		fmt.Println(" _sign function SUCCESS ...")
+		fmt.Println(" sign function SUCCESS ...")
 
 		if bgpsecData.signature != nil {
 			fmt.Printf("signature: %#v\n", bgpsecData.signature)
@@ -266,7 +271,7 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 		}
 
 	} else if retVal == 0 {
-		fmt.Println(" _sign function Failed ...")
+		fmt.Println(" sign function Failed ...")
 		switch bgpsecData.status {
 		case 1:
 			fmt.Println("signature error")
