@@ -2512,10 +2512,10 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			sp = &bgp.SecurePath{
 				Length: 8,
 				SecurePathSegments: []bgp.SecurePathSegment{
-					{PCount: 0, Flags: 0, ASN: peer.Config.LocalAs},
+					{PCount: 1, Flags: 0, ASN: peer.Config.LocalAs},
 				}}
 			var new_sps bgp.SecurePathSegment = bgp.SecurePathSegment{
-				PCount: 0, Flags: 0, ASN: peer.Config.LocalAs}
+				PCount: 1, Flags: 0, ASN: peer.Config.LocalAs}
 
 			// whether already exist path
 			if sp_value != nil {
