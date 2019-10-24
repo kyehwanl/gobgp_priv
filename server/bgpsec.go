@@ -1,8 +1,10 @@
 package server
 
 /*
-#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
-#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+//#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
+//#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/include/srx
+#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #include <stdio.h>
 #include <stdlib.h>
 #include "srxcryptoapi.h"
@@ -234,6 +236,7 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 			b, _ := buf.ReadByte()
 			o[i] = C.uchar(b)
 		}
+		// XXX: In bgpsec.go:438: validate(), it's already done !! --> maybe duplicated here
 		bm.bgpsecValData.bgpsec_path_attr = (*C.uchar)(pa)
 
 		// call hash generation function in crypto library

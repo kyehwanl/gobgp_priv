@@ -23,3 +23,11 @@ How to Build and Run
         -x : -x, print the commands (show all detailed compile information)
         -d : dry run, print the commands but do not run them
         -v : print the names of packages as they are compiled
+
+
+(4) Run
+    A. gobgpd (grpc server)
+        gowork/bin}-> sudo ./gobgpd --log-level=debug -f ./gobgpd.conf.bgpsec -p
+
+    B. gobgp (grpc client)
+        gowork/bin}-> gobgp global rib add bgpsec origin igp -a ipv4 25.18.22.0/24 nexthop 10.0.50.5
