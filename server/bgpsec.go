@@ -3,8 +3,10 @@ package server
 /*
 //#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
 //#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
-#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/include/srx
-#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+//#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/include/srx
+//#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+#cgo CFLAGS: -I/opt/project/srx_test1/_inst/include/srx
+#cgo LDFLAGS: -L/opt/project/srx_test1/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #include <stdio.h>
 #include <stdlib.h>
 #include "srxcryptoapi.h"
