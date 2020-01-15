@@ -675,7 +675,7 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 					var newAsPath bgp.PathAttributeInterface
 					if bgp.IsBgpsecInMsg(body) {
 						newAsPath = bgp.ExtractAsPathAttrFromBgpsecUpdate(body)
-						fmt.Println("newAsPaths from BGPSec update", newAsPath)
+						//log.Println("newAsPaths from BGPSec update", newAsPath)
 					}
 
 					// FIXME: we should use the original message for bmp/mrt

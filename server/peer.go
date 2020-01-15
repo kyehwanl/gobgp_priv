@@ -272,7 +272,7 @@ func (peer *Peer) filterpath(path, old *table.Path) *table.Path {
 		return nil
 	}
 
-	fmt.Println("bgpsecManager: ", peer.bgpserver.bgpsecManager)
+	log.Println("bgpsecManager: ", peer.bgpserver.bgpsecManager)
 	path = path.Clone(path.IsWithdraw)
 	path.UpdatePathAttrs(peer.fsm.gConf, peer.fsm.pConf)
 

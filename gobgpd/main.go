@@ -73,12 +73,13 @@ func main() {
 		}()
 	}
 
-
-        log.Info("Policy config is updated")
+	log.Info("Policy config is updated")
 
 	switch opts.LogLevel {
 	case "debug":
 		log.SetLevel(log.DebugLevel)
+		log.Println("disabling logging")
+		log.SetOutput(ioutil.Discard)
 	case "info":
 		log.SetLevel(log.InfoLevel)
 	default:

@@ -107,12 +107,12 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	//
 	//  call sign() function
 	//
-	fmt.Printf("+ bgpsec sign data testing...\n\n")
+	log.Printf("+ bgpsec sign data testing...\n\n")
 	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("bgpsec sign: Generate Signature\n")
 	//sp := bpa.(*bgp.PathAttributeBgpsec).SecurePathValue.(*bgp.SecurePath)
 	sp_value := sp[0].(*bgp.SecurePath).SecurePathSegments[0]
 	sp_len := len(sp[0].(*bgp.SecurePath).SecurePathSegments)
-	fmt.Println("+++ secure path value:", sp_value)
+	log.Println("+++ secure path value:", sp_value)
 
 	// ------ prefix handling ---------------
 	ga := &Go_SCA_Prefix{
@@ -129,17 +129,19 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	//copy(ga.addr[:], IPAddress[12:16])
 	copy(ga.Addr[:], bc.PxAddr)
 
-	//fmt.Printf("ipaddress: %#v\n", IPAddress )
-	//fmt.Println("4-byte rep: ", IPAddress.To4())
-	//fmt.Println("ip: ", binary.BigEndian.Uint32(IPAddress[12:16]))
+	//log.Printf("ipaddress: %#v\n", IPAddress )
+	//log.Println("4-byte rep: ", IPAddress.To4())
+	//log.Println("ip: ", binary.BigEndian.Uint32(IPAddress[12:16]))
 
 	//ga.Pack(unsafe.Pointer(&ad))
 	//C.PrintSCA_Prefix(ad)
 
 	ga.Pack(unsafe.Pointer(prefix))
+	/* comment out for performance measurement
 	C.PrintSCA_Prefix(*prefix)
+	*/
 
-	fmt.Printf("bc.Pxaddr: %#v, ga.addr: %#v, prefix.addr:%#v\n", bc.PxAddr, ga.Addr, prefix)
+	log.Printf("bc.Pxaddr: %#v, ga.addr: %#v, prefix.addr:%#v\n", bc.PxAddr, ga.Addr, prefix)
 
 	//os.Exit(3)
 
@@ -150,7 +152,9 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	cb[1] = C.uchar(b[1])
 	cb[2] = C.uchar(b[2])
 	//cb := C.uchar(b)
+	/* comment out for performance measurement
 	C.printHex(C.int(10), &cb[0])
+	*/
 
 	// ------ secure Path segment generation ---------------
 	u := &Go_SCA_BGPSEC_SecurePathSegment{
@@ -162,14 +166,16 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	defer C.free(unsafe.Pointer(sps))
 	u.Pack(unsafe.Pointer(sps))
 
-	//fmt.Printf("data:%#v\n\n", *sps)
-	//fmt.Printf("data:%+v\n\n", *sps)
+	//log.Printf("data:%#v\n\n", *sps)
+	//log.Printf("data:%+v\n\n", *sps)
+	/* comment out for performance measurement
 	C.PrintPacked(*sps)
+	*/
 
 	// ------ ski handling ---------------
 	bs, _ := hex.DecodeString(bc.SKI_str)
-	fmt.Printf("type of bs: %T\n", bs)
-	fmt.Printf("string test: %02X \n", bs)
+	log.Printf("type of bs: %T\n", bs)
+	log.Printf("string test: %02X \n", bs)
 
 	cbuf := (*[20]C.uchar)(C.malloc(20))
 	defer C.free(unsafe.Pointer(cbuf))
@@ -196,7 +202,7 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	//bgpsecData.hashMessage = (*C.SCA_HashMessage)(hash)
 	//bgpsecData.hashMessage = nil
 	if bm.bgpsec_path_attr != nil {
-		fmt.Println("path attr:", bm.bgpsec_path_attr)
+		log.Println("path attr:", bm.bgpsec_path_attr)
 	}
 
 	var peeras uint32 = bc.Local_as
@@ -206,8 +212,8 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 		big = append(big, u8)
 	}
 
-	fmt.Printf("++ peerAS :%#v\n", big)
-	fmt.Printf("++ peerAS BigEndian :%#v\n", binary.BigEndian.Uint32(big[4:8]))
+	log.Printf("++ peerAS :%#v\n", big)
+	log.Printf("++ peerAS BigEndian :%#v\n", binary.BigEndian.Uint32(big[4:8]))
 
 	bgpsecData := C.SCA_BGPSecSignData{
 		peerAS:      C.uint(binary.BigEndian.Uint32(big[4:8])),
@@ -224,8 +230,8 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	// if more than 2 hops bgpsec verify
 	if sp_len > 1 && bm.bgpsec_path_attr != nil {
 		log.WithFields(log.Fields{"Topic": "bgpsec"}).Info("more than 2 hops verification")
-		fmt.Println("path attr:", bm.bgpsec_path_attr)
-		fmt.Println("val data:", bm.bgpsecValData)
+		log.Println("path attr:", bm.bgpsec_path_attr)
+		log.Println("val data:", bm.bgpsecValData)
 
 		pa := C.malloc(C.ulong(bm.bgpsec_path_attr_length))
 		buf := &bytes.Buffer{}
@@ -254,12 +260,12 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 	//retVal := C._sign(&bgpsecData)
 	retVal := C.sign(1, arrBgpsecData)
 
-	fmt.Println("return: value:", retVal, " and status: ", bgpsecData.status)
+	log.Println("return: value:", retVal, " and status: ", bgpsecData.status)
 	if retVal == 1 {
-		fmt.Println(" sign function SUCCESS ...")
+		log.Println(" sign function SUCCESS ...")
 
 		if bgpsecData.signature != nil {
-			fmt.Printf("signature: %#v\n", bgpsecData.signature)
+			log.Printf("signature: %#v\n", bgpsecData.signature)
 
 			ret_array := func(sig_data *C.SCA_Signature) []uint8 {
 				buf := make([]uint8, 0, uint(sig_data.sigLen))
@@ -270,24 +276,24 @@ func (bc *BgpsecCrypto) GenerateSignature(sp []bgp.SecurePathInterface, bm *bgps
 				return buf
 			}(bgpsecData.signature)
 
-			fmt.Println("ret:", ret_array)
+			log.Println("ret:", ret_array)
 
 			return []byte(ret_array), uint16(bgpsecData.signature.sigLen)
 		}
 
 	} else if retVal == 0 {
-		fmt.Println(" sign function Failed ...")
+		log.Println(" sign function Failed ...")
 		switch bgpsecData.status {
 		case 1:
-			fmt.Println("signature error")
+			log.Println("signature error")
 		case 2:
-			fmt.Println("Key not found")
+			log.Println("Key not found")
 		case 0x10000:
-			fmt.Println("no data")
+			log.Println("no data")
 		case 0x20000:
-			fmt.Println("no prefix")
+			log.Println("no prefix")
 		case 0x40000:
-			fmt.Println("Invalid key")
+			log.Println("Invalid key")
 		}
 	}
 	return nil, 0
@@ -306,25 +312,25 @@ type bgpsecManager struct {
 func (bm *bgpsecManager) BgpsecInit(key string) ([]byte, error) {
 
 	// --------- call sca_SetKeyPath -----------------------
-	fmt.Printf("+ setKey path call testing...\n\n")
+	log.Printf("+ setKey path call testing...\n\n")
 	//sca_SetKeyPath needed in libSRxCryptoAPI.so
 
 	keyPath := C.CString(key)
 	keyRet := C.sca_SetKeyPath(keyPath)
-	fmt.Println("sca_SetKeyPath() return:", keyRet)
+	log.Println("sca_SetKeyPath() return:", keyRet)
 	if keyRet != 1 {
 		fmt.Errorf("setKey failed")
 	}
 
 	// --------- call Init() function ---------------------
-	fmt.Printf("+ Init call testing...\n\n")
+	log.Printf("+ Init call testing...\n\n")
 
 	str := C.CString("PUB:" + key + "/ski-list.txt;PRIV:" + key + "/priv-ski-list.txt")
-	fmt.Printf("+ str: %s\n", C.GoString(str))
+	log.Printf("+ str: %s\n", C.GoString(str))
 
 	var stat *scaStatus
 	initRet := C.init(str, C.int(7), (*C.uint)(stat))
-	fmt.Println("Init() return:", initRet)
+	log.Println("Init() return:", initRet)
 	if initRet != 1 {
 		fmt.Errorf("init failed")
 	}
@@ -376,15 +382,15 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 		for _, p := range path.GetPathAttrs() {
 			typ := uint(p.GetType())
 			if typ == uint(bgp.BGP_ATTR_TYPE_MP_REACH_NLRI) {
-				fmt.Printf("received MP NLRI: %#v\n", path)
+				log.Printf("received MP NLRI: %#v\n", path)
 				prefix_addr = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
 				prefix_len = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
 				nlri_afi = p.(*bgp.PathAttributeMpReachNLRI).AFI
 				nlri_safi = p.(*bgp.PathAttributeMpReachNLRI).SAFI
 
-				fmt.Println("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
+				log.Println("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
 				nlri_processed = true
-				fmt.Printf("received MP NLRI: %#v\n", nlri_processed)
+				log.Printf("received MP NLRI: %#v\n", nlri_processed)
 			}
 		}
 
@@ -392,7 +398,7 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 		for _, p := range path.GetPathAttrs() {
 			typ := uint(p.GetType())
 			if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) && nlri_processed {
-				fmt.Printf("+++ bgpsec validation start \n")
+				log.Printf("+++ bgpsec validation start \n")
 
 				var myas uint32 = bm.AS
 				big2 := make([]byte, 4, 4)
@@ -455,43 +461,47 @@ func (bm *bgpsecManager) validate(e *FsmMsg) {
 				pxip := prefix_addr
 				copy(px.Addr[:], pxip)
 				px.Pack(unsafe.Pointer(prefix2))
+				/* comment out for performance measurement
 				C.PrintSCA_Prefix(*prefix2)
-				fmt.Printf("prefix2 : %#v\n", prefix2)
+				*/
+				log.Printf("prefix2 : %#v\n", prefix2)
 
 				valData.nlri = prefix2
-				fmt.Printf(" valData : %#v\n", valData)
-				fmt.Printf(" valData.bgpsec_path_attr : %#v\n", valData.bgpsec_path_attr)
+				log.Printf(" valData : %#v\n", valData)
+				log.Printf(" valData.bgpsec_path_attr : %#v\n", valData.bgpsec_path_attr)
+				/* comment out for performance measurement
 				C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
-				fmt.Printf(" valData.nlri : %#v\n", *valData.nlri)
+				*/
+				log.Printf(" valData.nlri : %#v\n", *valData.nlri)
 
 				bm.bgpsecValData = valData
 				// call validate
 				ret := C.validate(&valData)
 
-				fmt.Println("return: value:", ret, " and status: ", valData.status)
+				log.Println("return: value:", ret, " and status: ", valData.status)
 
 				result := config.RPKI_VALIDATION_RESULT_TYPE_NONE
 				switch ret {
 				case 1:
-					fmt.Println(" +++ Validation function SUCCESS ...")
+					log.Println(" +++ Validation function SUCCESS ...")
 					result = config.RPKI_VALIDATION_RESULT_TYPE_VALID
 				case 0:
-					fmt.Println(" Validation function Failed...")
+					log.Println(" Validation function Failed...")
 					switch valData.status {
 					case 1:
-						fmt.Println("Status Error: signature error")
+						log.Println("Status Error: signature error")
 					case 2:
-						fmt.Println("Status Error: Key not found")
+						log.Println("Status Error: Key not found")
 					case 0x10000:
-						fmt.Println("Status Error: no data")
+						log.Println("Status Error: no data")
 					case 0x20000:
-						fmt.Println("Status Error: no prefix")
+						log.Println("Status Error: no prefix")
 					case 0x40000:
-						fmt.Println("Status Error: Invalid key")
+						log.Println("Status Error: Invalid key")
 					case 0x10000000:
-						fmt.Println("Status Error: USER1")
+						log.Println("Status Error: USER1")
 					case 0x20000000:
-						fmt.Println("Status Error: USER2")
+						log.Println("Status Error: USER2")
 					}
 					result = config.RPKI_VALIDATION_RESULT_TYPE_INVALID
 				default:

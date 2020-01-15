@@ -18,6 +18,7 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -858,25 +859,30 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 			return
 		case *bgp.BGPMessage:
 			server.roaManager.validate(e.PathList)
-			if peer.fsm.pConf.Config.BgpsecEnable {
-				server.bgpsecManager.validate(e)
-			}
 
-			//var updateCount = 0
+			log.SetOutput(ioutil.Discard) // disable logging for measurement
 			if updateCount == 0 {
 				//fmt.Printf("start at  %d sec : %d nano \n", time.Now().Second(), time.Now().Nanosecond())
 				start = time.Now()
 			}
 			updateCount++
 
+			if peer.fsm.pConf.Config.BgpsecEnable {
+				server.bgpsecManager.validate(e)
+			}
+
 			pathList, eor, notification := peer.handleUpdate(e)
 
-			if updateCount == 2 {
+			if updateCount == 100000 {
+				log.SetOutput(os.Stdout) // restore stdandar output
 				elapsed = time.Now()
 				//fmt.Printf("count:%d took  %d sec : %d nano \n", updateCount, time.Now().Second(), time.Now().Nanosecond())
 				diff := elapsed.Sub(start)
-				fmt.Printf("count:%d  time took : %d us \n", updateCount, diff.Nanoseconds()/1000)
+				//diff2 := elapsed.Sub(e.timestamp)
+				fmt.Printf("count:%d  bgpsec PV time took : %d us \n", updateCount, diff.Nanoseconds()/1000)
 				fmt.Println(diff)
+				//fmt.Printf("From Recevto PV done     took : %d us \n", diff2.Nanoseconds()/1000)
+				//fmt.Println(diff2)
 				updateCount = 0
 			}
 
@@ -2485,7 +2491,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 	for _, a := range path.GetPathAttrs() {
 		typ := a.GetType()
 		if typ == bgp.BGP_ATTR_TYPE_MP_REACH_NLRI {
-			fmt.Printf("MP NLRI: %#v\n", a)
+			log.Printf("MP NLRI: %#v\n", a)
 			prefix_addr = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
 			prefix_len = a.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
 			nlri_afi = a.(*bgp.PathAttributeMpReachNLRI).AFI
@@ -2501,7 +2507,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 		typ := a.GetType()
 
 		if typ == bgp.BGP_ATTR_TYPE_BGPSEC {
-			fmt.Printf("HERE bgpsec again\n")
+			log.Printf("HERE bgpsec again\n")
 			log.WithFields(log.Fields{
 				"Topic": "bgpsec",
 			}).Info("Func: UpdateBgpsecPathAttr")
@@ -2580,10 +2586,10 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 				Safi:     nlri_safi,
 			}
 
-			fmt.Printf("++ prefix_addr: %#v \n", prefix_addr)
+			log.Printf("++ prefix_addr: %#v \n", prefix_addr)
 			signature, sigLen := bc.GenerateSignature(sp_value, gl_bgpsecManager)
 
-			fmt.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
+			log.Printf("++ siglen: %d signature : %#v\n\n", sigLen, signature)
 
 			//sig_value := sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature
 			//sig_value = append(sig_value[:], []uint8(signature))
@@ -2593,8 +2599,8 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 			sb.(*bgp.SignatureBlock).SignatureSegments[0].Signature = signature
 			sb.(*bgp.SignatureBlock).SignatureSegments[0].Length = sigLen
 			sb.(*bgp.SignatureBlock).Length = sigLen + 20 + 2 + 1 + 2
-			fmt.Printf("++ sb Length: %d\n", sb.(*bgp.SignatureBlock).Length)
-			fmt.Println("test", prefix_addr, prefix_len, nlri_afi, nlri_safi)
+			log.Printf("++ sb Length: %d\n", sb.(*bgp.SignatureBlock).Length)
+			log.Println("test", prefix_addr, prefix_len, nlri_afi, nlri_safi)
 
 			new_ss.Signature = signature
 			new_ss.Length = sigLen
@@ -2619,7 +2625,7 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 				sb_value[0].(*bgp.SignatureBlock).Length = tot_sig_len + 2 + 1                        // Sig block Len(2)+algoid(1)
 			}
 
-			fmt.Printf("++ sb_value: %#v\n\n", sb_value)
+			log.Printf("++ sb_value: %#v\n\n", sb_value)
 
 			path.SetPathAttr(bgp.NewPathAttributeBgpsec(sp_value, sb_value))
 			//pattr = append(pattr, bgp.NewPathAttributeBgpsec(sp_value, sb_value))
